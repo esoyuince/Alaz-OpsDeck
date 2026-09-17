@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>WinExe</OutputType><UseWindowsForms>true</UseWindowsForms><AssemblyName>OpsDeck.Host</AssemblyName></PropertyGroup><ItemGroup><ProjectReference Include="../OpsDeck.Core/OpsDeck.Core.csproj"/></ItemGroup></Project>

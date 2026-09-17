@@ -1,0 +1,8 @@
+# Original OTA metadata is reserved, not initialized by this factory-only build.
+# Keep original data region offsets. Only the app subtype becomes factory.
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x9000,0x5000,
+ota_legacy,data,0x40,0xe000,0x2000,
+factory,app,factory,0x10000,0x300000,
+spiffs,data,spiffs,0x310000,0xe0000,
+coredump,data,coredump,0x3f0000,0x10000,

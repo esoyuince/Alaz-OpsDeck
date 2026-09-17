@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>WinExe</OutputType><UseWindowsForms>true</UseWindowsForms></PropertyGroup><ItemGroup><ProjectReference Include="../OpsDeck.Core/OpsDeck.Core.csproj"/><ProjectReference Include="../OpsDeck.Host/OpsDeck.Host.csproj"/><Compile Include="M49HistoryTests.cs.resume.pending" Link="M49HistoryTests.cs"/></ItemGroup></Project>

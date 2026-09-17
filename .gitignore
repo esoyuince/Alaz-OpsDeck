@@ -1,0 +1,89 @@
+# Local SDKs, virtual environments and toolchains
+.dotnet/
+.espressif/
+.venv*/
+.tools/
+tools/esp-idf/
+
+# Build products and generated dependencies
+**/bin/
+**/obj/
+**/build/
+**/build-*/
+**/managed_components/
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime, logs, evidence and local backups
+runtime/
+runtime-*/
+logs/
+artifacts/
+backups/
+*.log
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
+*.pfx
+*.p12
+*.pem
+*.key
+*.dpapi
+*.secret
+*.token
+*credentials*.json
+*secrets*.json
+
+# Firmware and packaged binaries
+*.bin
+*.elf
+*.map
+*.zip
+*.7z
+*.tar
+*.gz
+*.xz.b64
+
+# Local IDE / OS state
+.vs/
+.vscode/settings.json
+.idea/
+*.user
+*.suo
+Thumbs.db
+.DS_Store
+
+# Project-specific generated/local state
+firmware/panel/sdkconfig.old
+vendor/*tree.json
+
+# Historical/local development material kept on the workstation, not in public Git
+OPSDECK_BASLAT_M*.cmd
+*_ROLLBACK_*.cmd
+README_M*.md
+M0_DONANIM_KONTROLU.md
+docs/M*.md
+research/
+vendor/
+
+# Historical one-off migration/patch tooling is local evidence.
+tools/*
+!tools/safe_flash_panel.py
+!tools/configure_opsdeck_firewall.ps1
+!tools/check_cloud_ui_m513f.py
+!tools/check_m610_network_perf.py
+!tools/check_m611b_tls_perf.py
+!tools/check_m612_tls.py
+!tools/check_winui_modern.py
+
+# Generated firmware configuration / local source assets
+firmware/panel/sdkconfig
+firmware/panel/sdkconfig.*
+!firmware/panel/sdkconfig.defaults
+*.pending
+*.ttf
