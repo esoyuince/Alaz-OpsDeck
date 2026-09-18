@@ -95,7 +95,7 @@ static void serial_rx(void *unused)
 }
 void app_main(void)
 {
-    ESP_LOGI(TAG,"BOOT version=M5.17-B idf=%s reset_reason=%d",esp_get_idf_version(),(int)esp_reset_reason());
+    ESP_LOGI(TAG,"BOOT version=M5.18-A idf=%s reset_reason=%d",esp_get_idf_version(),(int)esp_reset_reason());
     ESP_LOGI(TAG,"PSRAM_BYTES=%u",(unsigned)esp_psram_get_size());
     if(esp_psram_get_size()<8*1024*1024){ESP_LOGE(TAG,"PSRAM smaller than expected; stopping");return;}
     if(!heap_caps_check_integrity_all(true)){ESP_LOGE(TAG,"Initial heap integrity failed");return;}
@@ -106,7 +106,7 @@ void app_main(void)
     /* USB transport accepts bounded telemetry plus approval-gated agent control.
        Re-apply UART0 IOMUX/line settings on every boot; do not rely on ROM/esptool residue. */
     const uart_config_t uart_cfg={
-        .baud_rate=115200,.data_bits=UART_DATA_8_BITS,.parity=UART_PARITY_DISABLE,
+        .baud_rate=460800,.data_bits=UART_DATA_8_BITS,.parity=UART_PARITY_DISABLE,
         .stop_bits=UART_STOP_BITS_1,.flow_ctrl=UART_HW_FLOWCTRL_DISABLE,.rx_flow_ctrl_thresh=0,
         .source_clk=UART_SCLK_DEFAULT,
     };
@@ -114,7 +114,7 @@ void app_main(void)
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0,U0TXD_GPIO_NUM,U0RXD_GPIO_NUM,UART_PIN_NO_CHANGE,UART_PIN_NO_CHANGE));
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0,8192,0,0,NULL,0));
     ESP_ERROR_CHECK(uart_flush_input(UART_NUM_0));
-    ESP_LOGI(TAG,"UART_READY uart=0 tx=%d rx=%d baud=115200",U0TXD_GPIO_NUM,U0RXD_GPIO_NUM);
+    ESP_LOGI(TAG,"UART_READY uart=0 tx=%d rx=%d baud=460800",U0TXD_GPIO_NUM,U0RXD_GPIO_NUM);
     if(xTaskCreate(serial_rx,"opsdeck_rx",12288,NULL,2,NULL)!=pdPASS){ESP_LOGE(TAG,"RX task allocation failed");return;}
     opsdeck_wifi_set_frame_handler(accept_wifi_frame);esp_err_t wifi_err=opsdeck_wifi_init();if(wifi_err!=ESP_OK)ESP_LOGW(TAG,"Wi-Fi foundation unavailable: %s",esp_err_to_name(wifi_err));
     esp_err_t auth_err=wifi_err==ESP_OK?opsdeck_link_auth_init():ESP_ERR_INVALID_STATE;if(auth_err!=ESP_OK)ESP_LOGW(TAG,"Wi-Fi link auth unavailable: %s",esp_err_to_name(auth_err));

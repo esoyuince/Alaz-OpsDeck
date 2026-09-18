@@ -4,7 +4,7 @@ namespace OpsDeck.Core;
 
 public static class PanelSerialPacing
 {
-    public const int Baud=115200;
+    public const int Baud=460800;
     public const int LoopDelayMs=5;
     public const int RequestResponseFloorMs=0;
     public const int MinGapMs=8;

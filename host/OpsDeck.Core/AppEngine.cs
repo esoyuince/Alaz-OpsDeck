@@ -190,7 +190,7 @@ public sealed partial class AppEngine : IAsyncDisposable
         ReloadProjectMappings();
         try{
             var store=new OperationalEventStore(Path.Combine(settings.DirectoryPath,"ops-events.db"));Volatile.Write(ref operationalStore,store);
-            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.17-B / Project Details"));
+            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.18-A / Fast Serial"));
         }catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("ops_timeline_unavailable",new{kind=e.GetType().Name});}
         try{Volatile.Write(ref telemetryHistory,new TelemetryHistoryStore(Path.Combine(settings.DirectoryPath,"telemetry-history.db")));}
         catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("telemetry_history_unavailable",new{kind=e.GetType().Name});}
@@ -249,7 +249,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                 finally{cf.Dispose();billingCf?.Dispose();}
             }));
         }
-        log.Event("host_started",new{version="M6.17-B",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
+        log.Event("host_started",new{version="M6.18-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
     }
     private bool UsbPrimaryHealthy()
     {
@@ -394,7 +394,7 @@ public sealed partial class AppEngine : IAsyncDisposable
             try {
                 if(SerialPaused||PowerSuspended){Volatile.Write(ref serialStatus,"Paused / COM released");await Task.Delay(100,stop.Token);continue;}
                 if(!IsExpectedUsbPort(config.Port)){LinkError();Volatile.Write(ref serialStatus,"Expected CH340K not found on "+config.Port);await Task.Delay(3000,stop.Token);continue;}
-                using var port=new SerialPort(config.Port,115200){DtrEnable=false,RtsEnable=false,Handshake=Handshake.None,ReadTimeout=100,WriteTimeout=1000,NewLine="\n",Encoding=PanelSerialEncoding};
+                using var port=new SerialPort(config.Port,PanelSerialPacing.Baud){DtrEnable=false,RtsEnable=false,Handshake=Handshake.None,ReadTimeout=100,WriteTimeout=1000,NewLine="\n",Encoding=PanelSerialEncoding};
                 port.Open();LinkOpened();Volatile.Write(ref panelReceipts,new PanelReceipt());failures=0;Volatile.Write(ref panelEvidence,"New connection / awaiting fresh device evidence");long serialEpoch=Interlocked.Read(ref resetEpoch);Volatile.Write(ref serialStatus,"USB open; waiting for device evidence");log.Event("serial_open");
                 var timer=Stopwatch.StartNew();long nextPc=0,nextProcesses=0,nextStatus=0,nextInventory=0,nextPair=0,nextTx=0,nextChatCheck=0,lastRx=-1,lastForward=0,lastPanelPackets=-1;bool forwardSeen=false;int framesSent=0;string pending="";string? lastChatWire=null;
                 var statusFrames=new Queue<string>();

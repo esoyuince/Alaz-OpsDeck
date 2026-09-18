@@ -7,9 +7,9 @@ ui=(root/"firmware/panel/main/opsdeck_ui.c").read_text(encoding="utf-8")
 main=(root/"firmware/panel/main/main.c").read_text(encoding="utf-8")
 form=(root/"host/OpsDeck.Host/MainForm.cs").read_text(encoding="utf-8")
 checks={
-"versions":"M6.17-B / Project Details" in form and 'version="M6.17-B"' in app and "BOOT version=M5.17-B" in main and "M5.17-B / PROJECT DETAILS" in ui,
+"versions":"M6.18-A / Fast Serial" in form and 'version="M6.18-A"' in app and "BOOT version=M5.18-A" in main and "M5.18-A / FAST SERIAL" in ui,
 "no-fixed-serial-sleeps":all(x not in app for x in ["Task.Delay(160,stop.Token)","Task.Delay(150,stop.Token)","Task.Delay(120,stop.Token)","Task.Delay(70,stop.Token)"]),
-"rx-loop-fast":"Task.Delay(PanelSerialPacing.LoopDelayMs,stop.Token)" in app and "LoopDelayMs=5" in pacing,
+"rx-loop-fast":"Task.Delay(PanelSerialPacing.LoopDelayMs,stop.Token)" in app and "LoopDelayMs=5" in pacing and "Baud=460800" in pacing,
 "wire-aware-gap":"GapMs(frame)" in app and "bytes*10_000L" in pacing and "MaxGapMs=300" in pacing,
 "request-immediate":all(x in app for x in ["nextInventory=timer.ElapsedMilliseconds","nextDetails=timer.ElapsedMilliseconds","nextOpsView=timer.ElapsedMilliseconds"]),
 "single-frame-scheduler":"statusFrames=new Queue<string>()" in app and "if(now>=nextTx)" in app and "if(tx!=null)SendFrame(tx)" in app,

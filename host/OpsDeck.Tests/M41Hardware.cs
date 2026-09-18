@@ -18,7 +18,7 @@ internal static class M41Hardware
             await Task.Delay(4000);result["intel_before"]=engine.Pc.IntelGpu;result["nvidia_before"]=engine.Pc.Gpu;
             engine.SerialPaused=true;await Wait(()=>engine.SerialStatus=="Paused / COM released",5,"pause_releases_com");
             bool stale=false,health=false;
-            using(var observer=new SerialPort(config.Port,115200){DtrEnable=false,RtsEnable=false,ReadTimeout=200}) {
+            using(var observer=new SerialPort(config.Port,PanelSerialPacing.Baud){DtrEnable=false,RtsEnable=false,ReadTimeout=200}) {
                 observer.Open();var watch=Stopwatch.StartNew();
                 while(watch.Elapsed.TotalSeconds<8) {
                     try {string line=observer.ReadLine();if(line.Contains("SOURCE_STATE stale"))stale=true;if(line.Contains("HEALTH uptime_s="))health=true;}
@@ -35,7 +35,7 @@ internal static class M41Hardware
             await Task.Delay(7000);result["intel_after"]=engine.Pc.IntelGpu;result["nvidia_after"]=engine.Pc.Gpu;
             result["samples"]=engine.Samples;result["panel_after"]=engine.PanelEvidence;
         }
-        using(var released=new SerialPort(config.Port,115200){DtrEnable=false,RtsEnable=false}) {
+        using(var released=new SerialPort(config.Port,PanelSerialPacing.Baud){DtrEnable=false,RtsEnable=false}) {
             released.Open();result["shutdown_releases_com"]=true;
         }
         await using(var restarted=new AppEngine(config,settings)) {
