@@ -14,7 +14,7 @@ app=(root/"host/OpsDeck.Core/AppEngine.cs").read_text(encoding="utf-8")
 form=(root/"host/OpsDeck.Host/MainForm.cs").read_text(encoding="utf-8")
 
 checks={
-"versions": "M5.19-A" in main and "M5.19-A / FAN MANUAL" in shell and "M6.19-A / Fan Manual" in form and 'version="M6.19-A"' in app,
+"versions": "M5.20-A" in main and "M5.20-A / CLOUD POLISH" in shell and "M6.19-A / Fan Manual" in form and 'version="M6.19-A"' in app,
 "host-request-contract": "mode=(auto|max|manual)" in host and "speed=([0-9]{2,3})" in host and "SetManualAsync" in host,
 "helper-manual-action": '[ValidateSet("status","auto","manual","max")]' in helper and 'manual_supported = $manualSupported' in helper,
 "wire-control-fields": all(x in models for x in ["fan_control_supported","fan_manual_supported","fan_control_mode","fan_control_speed_pct","fan_control_busy"]),

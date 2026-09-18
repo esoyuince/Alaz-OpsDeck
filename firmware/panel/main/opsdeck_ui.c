@@ -331,7 +331,7 @@ static void cloud_panel(lv_obj_t *parent,int x,int y,int w,int h,bool interactiv
   cloud_value[i]=text(m,8,31,"--",&lv_font_montserrat_20,INK);
   cloud_note[i]=text(m,8,64,"SETUP",&lv_font_montserrat_12,MUTED);lv_obj_set_width(cloud_note[i],cw-16);lv_label_set_long_mode(cloud_note[i],LV_LABEL_LONG_DOT);
  }
- text(o,16,250,"COST SNAPSHOT",&lv_font_montserrat_14,MUTED);
+ text(o,16,250,"COST / MONTHLY",&lv_font_montserrat_14,MUTED);
  cloud_value[4]=text(o,16,274,"--",&lv_font_montserrat_20,INK);
  cloud_note[4]=text(o,16,304,"SETUP",&lv_font_montserrat_12,MUTED);
  lv_obj_set_width(cloud_value[4],w-32);lv_label_set_long_mode(cloud_value[4],LV_LABEL_LONG_DOT);
@@ -446,7 +446,7 @@ static void refresh_providers(int64_t now){
   else snprintf(b,sizeof(b),"ACK %s | LAST NONE",ack_age);
   lv_label_set_text(link_last,b);
  }
- opsdeck_metric_t metrics[5];memcpy(metrics,s.metrics,sizeof(metrics));
+ opsdeck_metric_t metrics[5];memcpy(metrics,s.metrics,sizeof(metrics));opsdeck_metric_t aggregate_cost=s.metrics[4];bool aggregate_present=s.received_us>0;
  int cloud_age=age;bool cloud_present=s.received_us>0;bool cloud_enabled=true;opsdeck_cloud_t selected_cloud={0};
  char scope[48]="ALL + GENERAL HTTPS";
  if(current_page==3&&cloud_selection>0){
@@ -457,7 +457,14 @@ static void refresh_providers(int64_t now){
  if(cloud_scope){snprintf(b,sizeof(b),"%s%s",scope,cloud_selection>0&&!cloud_enabled?" / SETUP":"");lv_label_set_text(cloud_scope,b);}
  for(int i=0;i<3;i++)if(cloud_buttons[i]){
   lv_obj_set_style_border_color(cloud_buttons[i],col(i==cloud_selection?CYAN:EDGE),0);
-  if(i>0&&cloud_button_labels[i]){opsdeck_cloud_t a;opsdeck_cloud_copy(i-1,&a);if(a.received_us)lv_label_set_text(cloud_button_labels[i],a.name);}
+  if(!cloud_button_labels[i])continue;
+  if(i==0){
+   if(aggregate_present&&aggregate_cost.has_value){char amount[32];opsdeck_money_text(amount,aggregate_cost.value);snprintf(b,sizeof(b),"ALL\n%.3s %s",aggregate_cost.unit,amount);lv_label_set_text(cloud_button_labels[i],b);}
+   else lv_label_set_text(cloud_button_labels[i],"ALL");
+  }else{
+   opsdeck_cloud_t a;opsdeck_cloud_copy(i-1,&a);
+   if(a.received_us){opsdeck_metric_t *cost=&a.metrics[4];if(cost->has_value){char amount[32];opsdeck_money_text(amount,cost->value);snprintf(b,sizeof(b),"%s\n%.3s %s",a.name,cost->unit,amount);}else snprintf(b,sizeof(b),"%s\n--",a.name);lv_label_set_text(cloud_button_labels[i],b);}
+  }
  }
  const int ttl[]={180,180,900,180,7200};const char *units[]={"req/min","rows/5m","GiB","sites","usage"};
  int cloud_states[5];for(int i=0;i<5;i++)cloud_states[i]=cloud_effective_state(&metrics[i],cloud_present,cloud_age,ttl[i]);
@@ -471,10 +478,11 @@ static void refresh_providers(int64_t now){
    else compact_value(b,sizeof(b),m->value);
   }else snprintf(b,sizeof(b),"%s",i==4&&cloud_present&&m->state==4?"NO RECORDS":"--");
   lv_label_set_text(cloud_value[i],b);lv_obj_set_style_text_color(cloud_value[i],col(state==1?INK:cloud_state_color(state)),0);
-  if(i==4&&m->note[0]&&cloud_present&&cloud_age<16){
-   if(m->has_secondary&&state!=2&&state!=6){char amount[32];opsdeck_money_text(amount,m->secondary);snprintf(b,sizeof(b),"%.40s\nIncl. %.24s %.3s/month",m->note,amount,m->unit);}
-   else snprintf(b,sizeof(b),"%s",m->note);
-  }
+  if(i==4&&m->has_value&&cloud_present&&cloud_age<16&&state!=2&&state!=6){
+   char usage[32],fixed[32];double usage_value=m->value-(m->has_secondary?m->secondary:0);if(usage_value<0)usage_value=0;opsdeck_money_text(usage,usage_value);
+   if(m->has_secondary){opsdeck_money_text(fixed,m->secondary);snprintf(b,sizeof(b),"Usage %s + monthly %s %.3s",usage,fixed,m->unit);}
+   else snprintf(b,sizeof(b),"Usage %s %.3s | no monthly fee",usage,m->unit);
+  }else if(i==4&&m->note[0]&&cloud_present&&cloud_age<16)snprintf(b,sizeof(b),"%s",m->note);
   else if(i==3&&m->note[0]&&cloud_present&&cloud_age<16)snprintf(b,sizeof(b),"%.40s",current_page==3&&cloud_selection>0?"Account":(!strncmp(m->note,"ALL: ",5)?m->note+5:"All URLs"));
   else if(state==5&&m->expected>1){char ca[16];cloud_age_text(ca,sizeof(ca),m->age_s<0?-1:m->age_s+cloud_age);snprintf(b,sizeof(b),"PART %d/%d | %s",m->covered,m->expected,ca);}
   else if(state==1){char ca[16];cloud_age_text(ca,sizeof(ca),m->age_s<0?-1:m->age_s+cloud_age);snprintf(b,sizeof(b),"%s | %s",units[i],ca);}
@@ -486,14 +494,14 @@ static void refresh_providers(int64_t now){
  if(current_page==3){const char *abbr[]={"W","D1","R2","H","$"};for(int i=0;i<5;i++)if(cloud_account_health[i]){int st=cloud_states[i];snprintf(b,sizeof(b),"%s %s",abbr[i],st==1?"OK":st==5?"PART":st==3?"STALE":st==2?"ERR":st==6?"DENY":"--");lv_label_set_text(cloud_account_health[i],b);lv_obj_set_style_text_color(cloud_account_health[i],col(cloud_state_color(st)),0);}}
  if(hosting_scope){snprintf(b,sizeof(b),"HTTPS: %s",cloud_selection>0?"assigned account URLs only":"general + account URLs");lv_label_set_text(hosting_scope,b);}
  if(billing_period){
-  opsdeck_metric_t *m=&metrics[4];
-  char usage[32],fixed[32];opsdeck_money_text(fixed,m->secondary);opsdeck_money_text(usage,m->value-m->secondary);
-  if(m->has_secondary&&m->has_value&&m->covered>0)snprintf(b,sizeof(b),"Usage %.24s + fixed %.24s %.3s/month",usage,fixed,m->unit);
-  else if(m->has_secondary)snprintf(b,sizeof(b),"Usage -- | fixed %.24s %.3s/month",fixed,m->unit);
-  else snprintf(b,sizeof(b),"Latest usage records / fixed fee not set");
+  opsdeck_metric_t *m=&metrics[4];char usage[32],fixed[32];double usage_value=m->has_value?m->value-(m->has_secondary?m->secondary:0):0;if(usage_value<0)usage_value=0;opsdeck_money_text(usage,usage_value);opsdeck_money_text(fixed,m->secondary);
+  if(m->has_value&&m->has_secondary&&m->covered>0)snprintf(b,sizeof(b),"Usage %.24s %.3s + monthly %.24s %.3s",usage,m->unit,fixed,m->unit);
+  else if(m->has_value&&m->covered>0)snprintf(b,sizeof(b),"Usage %.24s %.3s | no monthly fee",usage,m->unit);
+  else if(m->has_secondary)snprintf(b,sizeof(b),"Usage -- | monthly %.24s %.3s",fixed,m->unit);
+  else snprintf(b,sizeof(b),"No dated usage record | no monthly fee");
   lv_label_set_text(billing_period,b);
  }
- if(billing_source){opsdeck_metric_t *m=&metrics[4];if(m->source_end[0]&&m->period_start[0]&&m->period_end[0])snprintf(b,sizeof(b),"Source %s | window %s..%s",m->source_end,m->period_start,m->period_end);else if(m->source_end[0])snprintf(b,sizeof(b),"Usage source: %s",m->source_end);else snprintf(b,sizeof(b),"Usage source: no dated record");lv_label_set_text(billing_source,b);}
+ if(billing_source){opsdeck_metric_t *m=&metrics[4];if(m->source_end[0]&&m->period_start[0]&&m->period_end[0])snprintf(b,sizeof(b),"Source %s | period %s..%s",m->source_end,m->period_start,m->period_end);else if(m->source_end[0]&&m->period_start[0])snprintf(b,sizeof(b),"Source %s | period from %s",m->source_end,m->period_start);else if(m->source_end[0])snprintf(b,sizeof(b),"Usage source %s",m->source_end);else snprintf(b,sizeof(b),"Usage source: no dated record");lv_label_set_text(billing_source,b);}
  if(current_page==3&&cloud_resource_summary){
   if(cloud_selection==0){
    lv_label_set_text(cloud_resource_summary,"Resources: choose an account for inventory coverage");
@@ -523,7 +531,7 @@ static void refresh_providers(int64_t now){
    lv_label_set_text(cloud_gateway_summary,b);lv_obj_set_style_text_color(cloud_gateway_summary,col(cloud_state_color(selected_cloud.gateway_state)),0);
   }
  } if(provider_summary){
-  if(current_page==3)snprintf(b,sizeof(b),cloud_present?"Host frame: %d s ago / not a source date":"Waiting for account frames",cloud_present?cloud_age:0);
+  if(current_page==3)snprintf(b,sizeof(b),cloud_present?"Updated %d s ago | source dates above":"Waiting for account frames",cloud_present?cloud_age:0);
   else snprintf(b,sizeof(b),"Host updates: %"PRIu32" | Age: %d s",s.sequence,s.received_us?age:0);
   lv_label_set_text(provider_summary,b);
  }
@@ -612,7 +620,7 @@ static void show_page(int page)
             lv_obj_set_style_bg_color(cloud_buttons[i],col(EDGE),0);lv_obj_set_style_shadow_width(cloud_buttons[i],0,0);
             lv_obj_set_style_border_width(cloud_buttons[i],1,0);
             cloud_button_labels[i]=text(cloud_buttons[i],0,0,labels[i],&lv_font_montserrat_14,INK);
-            lv_obj_set_width(cloud_button_labels[i],113);lv_label_set_long_mode(cloud_button_labels[i],LV_LABEL_LONG_DOT);
+            lv_obj_set_size(cloud_button_labels[i],113,42);lv_label_set_long_mode(cloud_button_labels[i],LV_LABEL_LONG_DOT);
             lv_obj_set_style_text_align(cloud_button_labels[i],LV_TEXT_ALIGN_CENTER,0);lv_obj_center(cloud_button_labels[i]);
             lv_obj_add_event_cb(cloud_buttons[i],cloud_select_event,LV_EVENT_CLICKED,(void*)(uintptr_t)i);
         }
@@ -780,7 +788,7 @@ void opsdeck_ui_init(const opsdeck_board_t *b)
     lv_obj_remove_flag(s,LV_OBJ_FLAG_SCROLLABLE);
     top_brand=text(s,16,14,"ALAZ OPSDECK",&lv_font_montserrat_24,INK);lv_obj_add_flag(top_brand,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(top_brand,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     home_btn=lv_button_create(s);lv_obj_set_pos(home_btn,16,10);lv_obj_set_size(home_btn,116,36);lv_obj_set_style_bg_color(home_btn,col(CARD),0);lv_obj_set_style_border_color(home_btn,col(CYAN),0);lv_obj_set_style_border_width(home_btn,1,0);lv_obj_set_style_radius(home_btn,10,0);lv_obj_set_style_shadow_width(home_btn,0,0);lv_obj_add_event_cb(home_btn,top_home_event,LV_EVENT_CLICKED,NULL);lv_obj_t *hl=text(home_btn,0,0,LV_SYMBOL_HOME "  HOME",&lv_font_montserrat_14,INK);lv_obj_center(hl);lv_obj_add_flag(home_btn,LV_OBJ_FLAG_HIDDEN);
-    text(s,274,21,"M5.19-A / FAN MANUAL",&lv_font_montserrat_14,MUTED);
+    text(s,274,21,"M5.20-A / CLOUD POLISH",&lv_font_montserrat_14,MUTED);
     uptime=text(s,508,20,"UP 00:00:00",&lv_font_montserrat_14,MUTED);
     badge=text(s,690,17,"NO HOST",&lv_font_montserrat_16,MUTED);lv_obj_add_flag(badge,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(badge,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     body=lv_obj_create(s);lv_obj_remove_style_all(body);lv_obj_set_pos(body,12,54);lv_obj_set_size(body,776,414);lv_obj_remove_flag(body,LV_OBJ_FLAG_SCROLLABLE);
