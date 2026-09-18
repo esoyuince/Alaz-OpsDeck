@@ -67,6 +67,14 @@ bool opsdeck_pc_decode(const cJSON *o,opsdeck_pc_t *s){
  if(cJSON_HasObjectItem(o,"fan_sensor")&&!integer(o,"fan_sensor",0,6,&s->fan_sensor))return false;
  if(s->fan_sensor==1&&!(s->valid&(PC_FAN1|PC_FAN2)))return false;
  if(s->fan_sensor!=1&&(s->valid&(PC_FAN1|PC_FAN2)))return false;
+ const char *fan_control_names[]={"fan_control_supported","fan_manual_supported","fan_control_mode","fan_control_busy"};int fan_control_present=0;
+ for(int i=0;i<4;i++)if(cJSON_HasObjectItem(o,fan_control_names[i]))fan_control_present++;
+ if(fan_control_present!=0&&fan_control_present!=4)return false;
+ if(fan_control_present==4){
+  if(!integer(o,"fan_control_supported",0,1,&s->fan_control_supported)||!integer(o,"fan_manual_supported",0,1,&s->fan_manual_supported)||!integer(o,"fan_control_mode",0,3,&s->fan_control_mode)||!integer(o,"fan_control_busy",0,1,&s->fan_control_busy))return false;
+  if(!s->fan_control_supported&&(s->fan_manual_supported||s->fan_control_mode!=0||s->fan_control_busy))return false;
+  s->valid|=PC_FAN_CONTROL;
+ }
  const cJSON *volumes=cJSON_GetObjectItemCaseSensitive(o,"volumes");
  if(volumes){
   if(!cJSON_IsArray(volumes)||!integer(o,"volume_count",0,26,&s->volume_count))return false;

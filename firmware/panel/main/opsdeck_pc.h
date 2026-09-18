@@ -11,7 +11,7 @@ typedef struct {
     float vram_used_gib,vram_total_gib,rx_mbps,tx_mbps;
     float intel_gpu,intel_temp,intel_shared_gib,intel_shared_limit_gib,fan1_rpm,fan2_rpm;
     float cpu_temp,chassis_temp;
-    int cpu_sensor,chassis_sensor,fan_sensor,volume_count,shown_volumes;
+    int cpu_sensor,chassis_sensor,fan_sensor,fan_control_supported,fan_manual_supported,fan_control_mode,fan_control_busy,volume_count,shown_volumes;
     opsdeck_volume_t volumes[2];
     uint32_t valid,sequence;
     int64_t received_us;
@@ -30,4 +30,5 @@ typedef struct {
 
 #define PC_CPU_TEMP (1u<<11)
 #define PC_CHASSIS_TEMP (1u<<12)
+#define PC_FAN_CONTROL (1u<<13)
 bool opsdeck_pc_decode(const cJSON *o,opsdeck_pc_t *s);

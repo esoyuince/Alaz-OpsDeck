@@ -10,7 +10,7 @@ public sealed partial class AppEngine : IAsyncDisposable
     private static readonly System.Text.Encoding PanelSerialEncoding=System.Text.Encoding.ASCII;
     private readonly CancellationTokenSource stop=new();private readonly List<Task> tasks=[];private readonly object gate=new();
     private FleetState fleet=FleetState.Empty;private PcSample pc=new();private long pcStamp;
-    private string serialStatus="Not started";private string panelEvidence="No panel evidence yet";
+    private string serialStatus="Not started";private string panelEvidence="No panel evidence yet";private readonly OmenFanControl fanControl=new();private readonly System.Collections.Concurrent.ConcurrentQueue<PanelFanControlRequest> fanControlRequests=new();public OmenFanControlSnapshot FanControl=>fanControl.Snapshot;
     private readonly SemaphoreSlim apiGate=new(2);private readonly string generation=Guid.NewGuid().ToString("N")[..8];private AccountState[] accounts;public AccountState[] Accounts=>Volatile.Read(ref accounts);
     private PanelReceipt panelReceipts=new();public PanelReceipt PanelReceipts=>Volatile.Read(ref panelReceipts);
     private Metric generalHosting=Metric.Setup();public Metric GeneralHosting=>Volatile.Read(ref generalHosting);
@@ -190,7 +190,7 @@ public sealed partial class AppEngine : IAsyncDisposable
         ReloadProjectMappings();
         try{
             var store=new OperationalEventStore(Path.Combine(settings.DirectoryPath,"ops-events.db"));Volatile.Write(ref operationalStore,store);
-            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.13-C / Projects V2"));
+            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.14-A / Fan Control"));
         }catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("ops_timeline_unavailable",new{kind=e.GetType().Name});}
         try{Volatile.Write(ref telemetryHistory,new TelemetryHistoryStore(Path.Combine(settings.DirectoryPath,"telemetry-history.db")));}
         catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("telemetry_history_unavailable",new{kind=e.GetType().Name});}
@@ -205,7 +205,7 @@ public sealed partial class AppEngine : IAsyncDisposable
         StartPanelAgentControl();StartPanelCodexSessions();
         if(OperationalTimelineAvailable)tasks.Add(Task.Run(OperationalLoop));
         if(LifecycleHistoryAvailable)tasks.Add(Task.Run(LifecycleLoop));
-        tasks.Add(Task.Run(PcLoop));tasks.Add(Task.Run(ProcessLoop));tasks.Add(Task.Run(AgentLoop));tasks.Add(Task.Run(HealthLoop));
+        tasks.Add(Task.Run(PcLoop));tasks.Add(Task.Run(ProcessLoop));tasks.Add(Task.Run(AgentLoop));tasks.Add(Task.Run(HealthLoop));tasks.Add(Task.Run(FanControlLoop));
         if(config.EdgeNodeEnabled)tasks.Add(Task.Run(EdgeNodeLoop));
         if(wifiTelemetry)
         {
@@ -242,7 +242,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                 finally{cf.Dispose();}
             }));
         }
-        log.Event("host_started",new{version="M6.13-C",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
+        log.Event("host_started",new{version="M6.14-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
     }
     private bool UsbPrimaryHealthy()
     {
@@ -250,7 +250,7 @@ public sealed partial class AppEngine : IAsyncDisposable
     }
     private string[] BuildWifiTelemetryFrames()
     {
-        var now=DateTimeOffset.UtcNow;var result=new List<string>(12);if(PcIsFresh)result.Add(Pc.Wire());if(Processes.CollectedAt.HasValue)result.Add(Processes.Wire());
+        var now=DateTimeOffset.UtcNow;var result=new List<string>(12);if(PcIsFresh)result.Add(Pc.Wire(FanControl));if(Processes.CollectedAt.HasValue)result.Add(Processes.Wire());
         result.Add(Fleet.Wire(now,Locked,LinkHealth,CodexUsage,ManagedCodex));var profiles=Accounts;for(int i=0;i<profiles.Length;i++)result.Add(profiles[i].Wire(i,profiles.Length,generation,now));
         result.Add(PanelAgentFrame());result.Add(PanelCodexSessionsFrame());result.Add(InventoryFrame(new PanelInventoryRequest()));return result.ToArray();
     }
@@ -399,7 +399,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                         int newline;
                         while((newline=pending.IndexOf('\n'))>=0){string line=pending[..newline].Trim();pending=pending[(newline+1)..];
                             if(wifiPairingId is string pairId&&wifiTlsFingerprint is string tlsFp&&WifiPairing.TryAck(line,pairId,tlsFp,out string pairedDevice)){Interlocked.Exchange(ref wifiPairingAcked,1);log.Event("wifi_pairing_ack",new{device=pairedDevice,pair_id=pairId,tls_pin=tlsFp[..12]});continue;}
-                            ObservePanelAgentLine(line);ObservePanelCodexLine(line);
+                            ObservePanelAgentLine(line);ObservePanelCodexLine(line);ObserveFanControlLine(line);
                             if(PanelInventoryRequest.TryParse(line,out var requested)&&requested!=inventoryQuery){inventoryQuery=requested!;nextInventory=Math.Max(timer.ElapsedMilliseconds,lastInventory+1000);}
                             if(PanelDetailsRequest.TryParse(line,out var detailRequest)){lastDetailsRequest=timer.ElapsedMilliseconds;if(detailRequest!=detailsQuery){detailsQuery=detailRequest;nextDetails=Math.Max(timer.ElapsedMilliseconds,lastDetails+1000);}}
                             if(PanelOpsViewRequest.TryParse(line,out var opsRequest)){lastOpsViewRequest=timer.ElapsedMilliseconds;if(opsRequest!=opsViewQuery){opsViewQuery=opsRequest;nextOpsView=Math.Max(timer.ElapsedMilliseconds,lastOpsView+1000);}}
@@ -420,7 +420,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                     long now=timer.ElapsedMilliseconds;
                     Volatile.Write(ref serialStatus,lastRx>=0&&now-lastRx<15000?"USB connected / device responding":"USB open / no recent device response");
                     if(Volatile.Read(ref wifiPairingAcked)==0&&wifiPairingKey is string pairKey&&wifiTlsIdentity is WifiTlsIdentity tlsId&&now>=nextPair){port.WriteLine(WifiPairing.PairFrame(pairKey,tlsId.CertificateDer));framesSent++;nextPair=now+5000;await Task.Delay(20,stop.Token);}
-                    if(now>=nextPc&&PcIsFresh){string pcFrame=Pc.Wire();if(System.Text.Encoding.UTF8.GetByteCount(pcFrame)>3000)throw new InvalidOperationException("PC frame exceeds protocol budget");port.WriteLine(pcFrame);framesSent++;nextPc=now+1000;await Task.Delay(150,stop.Token);}
+                    if(now>=nextPc&&PcIsFresh){string pcFrame=Pc.Wire(FanControl);if(System.Text.Encoding.UTF8.GetByteCount(pcFrame)>3000)throw new InvalidOperationException("PC frame exceeds protocol budget");port.WriteLine(pcFrame);framesSent++;nextPc=now+1000;await Task.Delay(150,stop.Token);}
                     if(now>=nextProcesses&&Processes.CollectedAt.HasValue){string processFrame=Processes.Wire();if(System.Text.Encoding.UTF8.GetByteCount(processFrame)>3000)throw new InvalidOperationException("Process frame exceeds protocol budget");port.WriteLine(processFrame);framesSent++;nextProcesses=now+2000;await Task.Delay(70,stop.Token);}
                     if(now>=nextStatus){var msg=Fleet.Wire(DateTimeOffset.UtcNow,Locked,LinkHealth,CodexUsage,ManagedCodex);if(System.Text.Encoding.UTF8.GetByteCount(msg)>3000)throw new InvalidOperationException("Status frame exceeds protocol budget");port.WriteLine(msg);framesSent++;await Task.Delay(160,stop.Token);
                         var profiles=Accounts;
@@ -495,7 +495,7 @@ public sealed partial class AppEngine : IAsyncDisposable
             var lifeStore=Interlocked.Exchange(ref lifecycleHistory,null);lifeStore?.Dispose();
             Volatile.Write(ref agentControl,null);Volatile.Write(ref agentPayloads,null);
             var runtime=Interlocked.Exchange(ref managedCodexRuntime,null);if(runtime!=null)await runtime.DisposeAsync();
-            var handoffs=Interlocked.Exchange(ref agentHandoffStore,null);handoffs?.Dispose();var commandStore=Interlocked.Exchange(ref agentCommandStore,null);commandStore?.Dispose();
+            var handoffs=Interlocked.Exchange(ref agentHandoffStore,null);handoffs?.Dispose();var commandStore=Interlocked.Exchange(ref agentCommandStore,null);commandStore?.Dispose();fanControl.Dispose();
             var tlsIdentity=Interlocked.Exchange(ref wifiTlsIdentity,null);tlsIdentity?.Dispose();apiGate.Dispose();stop.Dispose();log.Event("host_stopped");}
     }
 }

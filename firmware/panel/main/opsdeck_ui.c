@@ -647,7 +647,7 @@ void opsdeck_ui_init(const opsdeck_board_t *b)
     lv_obj_remove_flag(s,LV_OBJ_FLAG_SCROLLABLE);
     top_brand=text(s,16,14,"ALAZ OPSDECK",&lv_font_montserrat_24,INK);lv_obj_add_flag(top_brand,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(top_brand,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     home_btn=lv_button_create(s);lv_obj_set_pos(home_btn,16,10);lv_obj_set_size(home_btn,116,36);lv_obj_set_style_bg_color(home_btn,col(CARD),0);lv_obj_set_style_border_color(home_btn,col(CYAN),0);lv_obj_set_style_border_width(home_btn,1,0);lv_obj_set_style_radius(home_btn,10,0);lv_obj_set_style_shadow_width(home_btn,0,0);lv_obj_add_event_cb(home_btn,top_home_event,LV_EVENT_CLICKED,NULL);lv_obj_t *hl=text(home_btn,0,0,LV_SYMBOL_HOME "  HOME",&lv_font_montserrat_14,INK);lv_obj_center(hl);lv_obj_add_flag(home_btn,LV_OBJ_FLAG_HIDDEN);
-    text(s,274,21,"M5.13-H / PROJECTS V2",&lv_font_montserrat_14,MUTED);
+    text(s,274,21,"M5.14-A / FAN CONTROL",&lv_font_montserrat_14,MUTED);
     uptime=text(s,508,20,"UP 00:00:00",&lv_font_montserrat_14,MUTED);
     badge=text(s,690,17,"NO HOST",&lv_font_montserrat_16,MUTED);lv_obj_add_flag(badge,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(badge,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     body=lv_obj_create(s);lv_obj_remove_style_all(body);lv_obj_set_pos(body,12,54);lv_obj_set_size(body,776,414);lv_obj_remove_flag(body,LV_OBJ_FLAG_SCROLLABLE);
