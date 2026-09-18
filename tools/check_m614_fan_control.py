@@ -14,16 +14,15 @@ app=(root/"host/OpsDeck.Core/AppEngine.cs").read_text(encoding="utf-8")
 form=(root/"host/OpsDeck.Host/MainForm.cs").read_text(encoding="utf-8")
 
 checks={
-"versions": "M5.14-A" in main and "M5.14-A / FAN CONTROL" in shell and "M6.14-A / Fan Control" in form and 'version="M6.14-A"' in app,
-"host-request-contract": "mode=(auto|max)" in host and "request=([1-9][0-9]{0,9})" in host and "request-manual-rejected" not in host,
-"helper-no-manual-action": '[ValidateSet("status","auto","max")]' in helper and '[ValidateSet("status","auto","manual","max")]' not in helper,
-"wire-control-fields": all(x in models for x in ["fan_control_supported","fan_manual_supported","fan_control_mode","fan_control_busy"]),
-"panel-atomic-fields": 'fan_control_present!=0&&fan_control_present!=4' in pc_c and "PC_FAN_CONTROL" in pc_h,
-"manual-ui-locked": 'button(root,616,101,92,32,"MANUAL"' in screen and 'lv_obj_add_state(fan_control_btn[2],LV_STATE_DISABLED)' in screen,
-"manual-handler-rejected": "requested<1||requested>2" in screen and 'requested==1?"auto":"max"' in screen,
-"panel-request-log": 'FAN_CONTROL_REQUEST mode=%s request=%d' in screen,
-"host-async-queue": "fanControlRequests.Enqueue(request)" in engine and "FanControlLoop" in engine,
-"live-evidence": "fan_ctl=%d mode=%d busy=%d" in main,
+"versions": "M5.19-A" in main and "M5.19-A / FAN MANUAL" in shell and "M6.19-A / Fan Manual" in form and 'version="M6.19-A"' in app,
+"host-request-contract": "mode=(auto|max|manual)" in host and "speed=([0-9]{2,3})" in host and "SetManualAsync" in host,
+"helper-manual-action": '[ValidateSet("status","auto","manual","max")]' in helper and 'manual_supported = $manualSupported' in helper,
+"wire-control-fields": all(x in models for x in ["fan_control_supported","fan_manual_supported","fan_control_mode","fan_control_speed_pct","fan_control_busy"]),
+"panel-atomic-fields": 'fan_control_present!=0&&fan_control_present!=5' in pc_c and "fan_control_speed_pct" in pc_h,
+"manual-ui": all(x in screen for x in ['"AUTO"','"MAX"','"-5"','"MAN 70%"','"+5"']),
+"manual-handler": "requested_mode=action==1?1:action==2?2:3" in screen and "FAN_CONTROL_REQUEST mode=manual speed=%d request=%d" in screen,
+"host-async-queue": "fanControlRequests.Enqueue(request)" in engine and "SetManualAsync" in engine,
+"live-evidence": "fan_ctl=%d manual=%d mode=%d speed=%d busy=%d" in main,
 }
 for k,v in checks.items():
     print(("PASS " if v else "FAIL ")+k)

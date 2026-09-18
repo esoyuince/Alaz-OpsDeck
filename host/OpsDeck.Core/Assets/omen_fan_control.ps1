@@ -8,7 +8,7 @@ No driver is installed and no EC/BIOS register is accessed directly.
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet("status","auto","max")]
+    [ValidateSet("status","auto","manual","max")]
     [string]$Action = "status",
     [ValidateRange(50,100)]
     [int]$SpeedPct = 70,
@@ -24,6 +24,10 @@ if (-not $InternalWorker) {
         "-Action",$Action,"-SpeedPct",$SpeedPct,"-InternalWorker")
     & $windowsPowerShell @forward
     exit $LASTEXITCODE
+}
+
+if ($Action -eq "manual" -and (($SpeedPct % 5) -ne 0)) {
+    throw "Manual fan speed must be 50-100 in 5 percent steps."
 }
 
 $package = Get-AppxPackage -Name "AD2F1837.OMENCommandCenter" -ErrorAction Stop
@@ -134,15 +138,25 @@ function Read-Int([string]$key, [int]$fallback) {
     return [Convert]::ToInt32($value, [Globalization.CultureInfo]::InvariantCulture)
 }
 
+$fanSpeedRaw = [OpsDeckOmenFanBridge]::Get("FanSpeed")
+$manualSupported = ($null -ne $fanSpeedRaw)
+if ($Action -eq "manual" -and -not $manualSupported) {
+    throw "OMEN profile does not expose manual FanSpeed."
+}
+
 if ($Action -ne "status") {
     $thermal = switch ($Action) {
         "max" { 0 }
         "auto" { 1 }
+        "manual" { 2 }
     }
     $maxFan = if ($Action -eq "max") { 1 } else { 0 }
 
     [OpsDeckOmenFanBridge]::SetDword("MaxFan", [int]$maxFan)
     [OpsDeckOmenFanBridge]::SetDword("ThermalControl", [int]$thermal)
+    if ($Action -eq "manual") {
+        [OpsDeckOmenFanBridge]::SetDword("FanSpeed", [int]$SpeedPct)
+    }
     [OpsDeckOmenFanBridge]::Reload($assemblyRoot)
     Start-Sleep -Milliseconds 700
 }
@@ -161,6 +175,7 @@ if ($maxFanNow -eq 1) { $modeNow = "max" }
 [ordered]@{
     schema = "opsdeck.omen-fan-control.v1"
     supported = $true
+    manual_supported = $manualSupported
     mode = $modeNow
     mode_id = $thermalNow
     fan_speed_pct = $speedNow

@@ -12,15 +12,16 @@ public sealed record OmenFanControlSnapshot(
     OmenFanMode Mode=OmenFanMode.Unknown,
     bool Busy=false,
     DateTimeOffset? ObservedAt=null,
-    string Status="OMEN fan control not sampled")
+    string Status="OMEN fan control not sampled",
+    int? SpeedPercent=null)
 {
     public static OmenFanControlSnapshot Setup=>new();
 }
 
-public sealed record PanelFanControlRequest(OmenFanMode Mode,int RequestId)
+public sealed record PanelFanControlRequest(OmenFanMode Mode,int RequestId,int? SpeedPercent=null)
 {
     private static readonly Regex Pattern=new(
-        @"(?:\A| )opsdeck\.ui: FAN_CONTROL_REQUEST mode=(auto|max) request=([1-9][0-9]{0,9})\z",
+        @"(?:\A| )opsdeck\.ui: FAN_CONTROL_REQUEST mode=(auto|max|manual)(?: speed=([0-9]{2,3}))? request=([1-9][0-9]{0,9})\z",
         RegexOptions.CultureInvariant|RegexOptions.Compiled);
 
     public static bool TryParse(string line,out PanelFanControlRequest? request)
@@ -28,8 +29,16 @@ public sealed record PanelFanControlRequest(OmenFanMode Mode,int RequestId)
         request=null;
         if(string.IsNullOrEmpty(line)||line.Length>240)return false;
         var m=Pattern.Match(line);
-        if(!m.Success||!int.TryParse(m.Groups[2].Value,out int id)||id<=0)return false;
-        request=new(m.Groups[1].Value=="auto"?OmenFanMode.Auto:OmenFanMode.Max,id);
+        if(!m.Success||!int.TryParse(m.Groups[3].Value,out int id)||id<=0)return false;
+        string modeText=m.Groups[1].Value;int? speed=null;
+        if(m.Groups[2].Success)
+        {
+            if(!int.TryParse(m.Groups[2].Value,out int parsed)||parsed<50||parsed>100||parsed%5!=0)return false;
+            speed=parsed;
+        }
+        OmenFanMode mode=modeText switch{"auto"=>OmenFanMode.Auto,"max"=>OmenFanMode.Max,"manual"=>OmenFanMode.Manual,_=>OmenFanMode.Unknown};
+        if(mode==OmenFanMode.Manual&&!speed.HasValue||mode!=OmenFanMode.Manual&&speed.HasValue)return false;
+        request=new(mode,id,speed);
         return true;
     }
 }
@@ -44,15 +53,21 @@ public sealed class OmenFanControl : IDisposable
     public OmenFanControl(string? script=null)=>scriptPath=script??Path.Combine(AppContext.BaseDirectory,"omen_fan_control.ps1");
     public OmenFanControlSnapshot Snapshot=>Volatile.Read(ref snapshot);
 
-    public Task<OmenFanControlSnapshot> RefreshAsync(CancellationToken ct)=>RunAsync("status",ct);
+    public Task<OmenFanControlSnapshot> RefreshAsync(CancellationToken ct)=>RunAsync("status",null,ct);
 
     public Task<OmenFanControlSnapshot> SetModeAsync(OmenFanMode mode,CancellationToken ct)
     {
         if(mode is not (OmenFanMode.Auto or OmenFanMode.Max))throw new ArgumentOutOfRangeException(nameof(mode));
-        return RunAsync(mode==OmenFanMode.Auto?"auto":"max",ct);
+        return RunAsync(mode==OmenFanMode.Auto?"auto":"max",null,ct);
     }
 
-    private async Task<OmenFanControlSnapshot> RunAsync(string action,CancellationToken ct)
+    public Task<OmenFanControlSnapshot> SetManualAsync(int speedPercent,CancellationToken ct)
+    {
+        if(speedPercent<50||speedPercent>100||speedPercent%5!=0)throw new ArgumentOutOfRangeException(nameof(speedPercent));
+        return RunAsync("manual",speedPercent,ct);
+    }
+
+    private async Task<OmenFanControlSnapshot> RunAsync(string action,int? speedPercent,CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed)!=0,this);
         await gate.WaitAsync(ct);
@@ -80,6 +95,11 @@ public sealed class OmenFanControl : IDisposable
             start.ArgumentList.Add(scriptPath);
             start.ArgumentList.Add("-Action");
             start.ArgumentList.Add(action);
+            if(speedPercent.HasValue)
+            {
+                start.ArgumentList.Add("-SpeedPct");
+                start.ArgumentList.Add(speedPercent.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
             start.ArgumentList.Add("-InternalWorker");
 
             using var process=Process.Start(start)??throw new InvalidOperationException("OMEN fan helper could not start");
@@ -142,10 +162,13 @@ public sealed class OmenFanControl : IDisposable
             "manual"=>OmenFanMode.Manual,
             _=>OmenFanMode.Unknown
         };
-        string status=mode==OmenFanMode.Manual
-            ?"Manual detected externally; OpsDeck manual control is disabled"
-            :$"OMEN {modeText.ToUpperInvariant()}";
-        return new(true,false,mode,false,observedAt,status);
+        bool manualSupported=root.TryGetProperty("manual_supported",out var manualNode)&&(manualNode.ValueKind is JsonValueKind.True or JsonValueKind.False)&&manualNode.GetBoolean();
+        int? speed=null;
+        if(root.TryGetProperty("fan_speed_pct",out var speedNode)&&speedNode.TryGetInt32(out int parsedSpeed)&&parsedSpeed is >=50 and <=100&&parsedSpeed%5==0)speed=parsedSpeed;
+        if(manualSupported&&!speed.HasValue)throw new InvalidDataException("Manual fan speed unavailable");
+        if(mode==OmenFanMode.Manual&&!manualSupported)throw new InvalidDataException("Manual mode reported without capability");
+        string status=mode==OmenFanMode.Manual?$"OMEN MANUAL {speed}%":$"OMEN {modeText.ToUpperInvariant()}";
+        return new(true,manualSupported,mode,false,observedAt,status,speed);
     }
 
     private static string Limit(string value)

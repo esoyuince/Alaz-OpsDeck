@@ -63,7 +63,7 @@ static void accept_line(const char *line)
     opsdeck_pc_t s={0};bool accepted=opsdeck_pc_decode(o,&s);cJSON_Delete(o);if(!accepted)return;
     s.received_us=esp_timer_get_time();s.sequence=++packets;
     opsdeck_pc_publish(&s);
-    if(packets==1||packets%10==0)ESP_LOGI(TAG,"PC_RX sequence=%"PRIu32" fields=0x%04"PRIx32" intel=%.1f nvidia=%.1f cpu_sensor=%d chassis_sensor=%d fan_sensor=%d fan_ctl=%d mode=%d busy=%d volumes=%d",packets,s.valid,(double)((s.valid&PC_INTEL)?s.intel_gpu:-1),(double)((s.valid&PC_GPU)?s.gpu:-1),s.cpu_sensor,s.chassis_sensor,s.fan_sensor,(s.valid&PC_FAN_CONTROL)?s.fan_control_supported:-1,(s.valid&PC_FAN_CONTROL)?s.fan_control_mode:-1,(s.valid&PC_FAN_CONTROL)?s.fan_control_busy:-1,s.volume_count);
+    if(packets==1||packets%10==0)ESP_LOGI(TAG,"PC_RX sequence=%"PRIu32" fields=0x%04"PRIx32" intel=%.1f nvidia=%.1f cpu_sensor=%d chassis_sensor=%d fan_sensor=%d fan_ctl=%d manual=%d mode=%d speed=%d busy=%d volumes=%d",packets,s.valid,(double)((s.valid&PC_INTEL)?s.intel_gpu:-1),(double)((s.valid&PC_GPU)?s.gpu:-1),s.cpu_sensor,s.chassis_sensor,s.fan_sensor,(s.valid&PC_FAN_CONTROL)?s.fan_control_supported:-1,(s.valid&PC_FAN_CONTROL)?s.fan_manual_supported:-1,(s.valid&PC_FAN_CONTROL)?s.fan_control_mode:-1,(s.valid&PC_FAN_CONTROL)?s.fan_control_speed_pct:-1,(s.valid&PC_FAN_CONTROL)?s.fan_control_busy:-1,s.volume_count);
 }
 static bool accept_wifi_frame(const char *line)
 {
@@ -95,7 +95,7 @@ static void serial_rx(void *unused)
 }
 void app_main(void)
 {
-    ESP_LOGI(TAG,"BOOT version=M5.18-A idf=%s reset_reason=%d",esp_get_idf_version(),(int)esp_reset_reason());
+    ESP_LOGI(TAG,"BOOT version=M5.19-A idf=%s reset_reason=%d",esp_get_idf_version(),(int)esp_reset_reason());
     ESP_LOGI(TAG,"PSRAM_BYTES=%u",(unsigned)esp_psram_get_size());
     if(esp_psram_get_size()<8*1024*1024){ESP_LOGE(TAG,"PSRAM smaller than expected; stopping");return;}
     if(!heap_caps_check_integrity_all(true)){ESP_LOGE(TAG,"Initial heap integrity failed");return;}

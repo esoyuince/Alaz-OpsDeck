@@ -6,7 +6,7 @@ public sealed partial class AppEngine
     {
         if(!PanelFanControlRequest.TryParse(line,out var request)||request==null)return;
         fanControlRequests.Enqueue(request);
-        log.Event("fan_control_requested",new{request=request.RequestId,mode=request.Mode.ToString()});
+        log.Event("fan_control_requested",new{request=request.RequestId,mode=request.Mode.ToString(),speed=request.SpeedPercent});
     }
 
     private async Task FanControlLoop()
@@ -16,8 +16,10 @@ public sealed partial class AppEngine
         {
             if(fanControlRequests.TryDequeue(out var request))
             {
-                var result=await fanControl.SetModeAsync(request.Mode,stop.Token);
-                log.Event("fan_control_result",new{request=request.RequestId,requested=request.Mode.ToString(),mode=result.Mode.ToString(),supported=result.Supported,status=result.Status});
+                var result=request.Mode==OmenFanMode.Manual
+                    ?await fanControl.SetManualAsync(request.SpeedPercent??throw new InvalidOperationException("Manual fan request missing speed"),stop.Token)
+                    :await fanControl.SetModeAsync(request.Mode,stop.Token);
+                log.Event("fan_control_result",new{request=request.RequestId,requested=request.Mode.ToString(),speed=request.SpeedPercent,mode=result.Mode.ToString(),actual_speed=result.SpeedPercent,supported=result.Supported,status=result.Status});
                 RecordOperational(new(
                     DateTimeOffset.UtcNow,
                     result.Supported?OperationalSeverity.Info:OperationalSeverity.Warning,

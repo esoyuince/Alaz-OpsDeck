@@ -7,7 +7,7 @@ ui=(root/"firmware/panel/main/opsdeck_ui.c").read_text(encoding="utf-8")
 main=(root/"firmware/panel/main/main.c").read_text(encoding="utf-8")
 form=(root/"host/OpsDeck.Host/MainForm.cs").read_text(encoding="utf-8")
 checks={
-"versions":"M6.18-A / Fast Serial" in form and 'version="M6.18-A"' in app and "BOOT version=M5.18-A" in main and "M5.18-A / FAST SERIAL" in ui,
+"versions":"M6.19-A / Fan Manual" in form and 'version="M6.19-A"' in app and "BOOT version=M5.19-A" in main and "M5.19-A / FAN MANUAL" in ui,
 "no-fixed-serial-sleeps":all(x not in app for x in ["Task.Delay(160,stop.Token)","Task.Delay(150,stop.Token)","Task.Delay(120,stop.Token)","Task.Delay(70,stop.Token)"]),
 "rx-loop-fast":"Task.Delay(PanelSerialPacing.LoopDelayMs,stop.Token)" in app and "LoopDelayMs=5" in pacing and "Baud=460800" in pacing,
 "wire-aware-gap":"GapMs(frame)" in app and "bytes*10_000L" in pacing and "MaxGapMs=300" in pacing,

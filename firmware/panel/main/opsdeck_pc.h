@@ -11,7 +11,7 @@ typedef struct {
     float vram_used_gib,vram_total_gib,rx_mbps,tx_mbps;
     float intel_gpu,intel_temp,intel_shared_gib,intel_shared_limit_gib,fan1_rpm,fan2_rpm;
     float cpu_temp,chassis_temp;
-    int cpu_sensor,chassis_sensor,fan_sensor,fan_control_supported,fan_manual_supported,fan_control_mode,fan_control_busy,volume_count,shown_volumes;
+    int cpu_sensor,chassis_sensor,fan_sensor,fan_control_supported,fan_manual_supported,fan_control_mode,fan_control_speed_pct,fan_control_busy,volume_count,shown_volumes;
     opsdeck_volume_t volumes[2];
     uint32_t valid,sequence;
     int64_t received_us;

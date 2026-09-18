@@ -26,8 +26,8 @@
 #define RED 0xFF5C5C
 static lv_obj_t *root,*title,*live_value,*live_note,*age_label,*stats[3],*history_note,*legend_note,*chart,*row[7],*row_title[7],*row_text[7],*window_btn[4],*window_label[4],*metric_button,*metric_label,*variant_btn[2],*variant_label[2];
 static lv_obj_t *wifi_state_label,*wifi_ssid_label,*wifi_ip_label,*wifi_host_label,*wifi_scan_btn,*wifi_config_btn,*wifi_connect_btn,*wifi_forget_btn,*wifi_ap_btn[OPSDECK_WIFI_SCAN_MAX],*wifi_ap_label[OPSDECK_WIFI_SCAN_MAX];
-static lv_obj_t *wifi_composer,*wifi_ssid_ta,*wifi_pass_ta,*wifi_kb,*wifi_comp_note;static lv_obj_t *fan_control_btn[3],*fan_control_label[3];
-static lv_chart_series_t *series_a,*series_b,*series_c;static opsdeck_screen_mode_t mode;static int window_index=1,history_metric=0,history_variant=0;static uint32_t last_ops_sequence=UINT32_MAX,last_live_pc_sequence=UINT32_MAX,last_local_pc_sequence=UINT32_MAX,last_wifi_sequence=UINT32_MAX;static int64_t last_request_us,last_live_second=-1,last_local_second=-1,last_wifi_second=-1;static int last_live_id=-1,last_live_pending=-1,last_local_mode=-1;static int fan_control_request=1,fan_control_pending_mode;static int64_t fan_control_pending_us;
+static lv_obj_t *wifi_composer,*wifi_ssid_ta,*wifi_pass_ta,*wifi_kb,*wifi_comp_note;static lv_obj_t *fan_control_btn[5],*fan_control_label[5];
+static lv_chart_series_t *series_a,*series_b,*series_c;static opsdeck_screen_mode_t mode;static int window_index=1,history_metric=0,history_variant=0;static uint32_t last_ops_sequence=UINT32_MAX,last_live_pc_sequence=UINT32_MAX,last_local_pc_sequence=UINT32_MAX,last_wifi_sequence=UINT32_MAX;static int64_t last_request_us,last_live_second=-1,last_local_second=-1,last_wifi_second=-1;static int last_live_id=-1,last_live_pending=-1,last_local_mode=-1;static int fan_control_request=1,fan_control_pending_mode,fan_control_pending_speed,fan_manual_target=70;static int64_t fan_control_pending_us;
 static lv_color_t color(uint32_t v){return lv_color_hex(v);}
 static lv_obj_t *label(lv_obj_t *p,int x,int y,int w,const char *s,const lv_font_t *font,uint32_t c)
 {
@@ -117,18 +117,23 @@ static void variant_event(lv_event_t *e)
 }
 static void fan_control_event(lv_event_t *e)
 {
-    int requested=(int)(intptr_t)lv_event_get_user_data(e);if(mode!=OPS_SCREEN_FANS||requested<1||requested>2)return;
+    int action=(int)(intptr_t)lv_event_get_user_data(e);if(mode!=OPS_SCREEN_FANS||action<1||action>5)return;
     opsdeck_pc_t p;opsdeck_pc_copy(&p);int64_t now=esp_timer_get_time();
     bool pending=fan_control_pending_us>0&&now-fan_control_pending_us<15000000;
     if(pending||!(p.valid&PC_FAN_CONTROL)||!p.fan_control_supported||p.fan_control_busy)return;
-    const char *name=requested==1?"auto":"max";int request=fan_control_request;
-    fan_control_request=fan_control_request==INT_MAX?1:fan_control_request+1;fan_control_pending_us=now;fan_control_pending_mode=requested;
-    ESP_LOGI("opsdeck.ui","FAN_CONTROL_REQUEST mode=%s request=%d",name,request);
+    int requested_mode=action==1?1:action==2?2:3;
+    if(requested_mode==3&&!p.fan_manual_supported)return;
+    if(action==3)fan_manual_target=fan_manual_target<=50?50:fan_manual_target-5;
+    else if(action==5)fan_manual_target=fan_manual_target>=100?100:fan_manual_target+5;
+    const char *name=requested_mode==1?"auto":requested_mode==2?"max":"manual";int request=fan_control_request;
+    fan_control_request=fan_control_request==INT_MAX?1:fan_control_request+1;fan_control_pending_us=now;fan_control_pending_mode=requested_mode;fan_control_pending_speed=requested_mode==3?fan_manual_target:0;last_live_pc_sequence=UINT32_MAX;
+    if(requested_mode==3)ESP_LOGI("opsdeck.ui","FAN_CONTROL_REQUEST mode=manual speed=%d request=%d",fan_manual_target,request);
+    else ESP_LOGI("opsdeck.ui","FAN_CONTROL_REQUEST mode=%s request=%d",name,request);
 }
 bool opsdeck_screen_ui_is_open(void){return root!=NULL;}
 void opsdeck_screen_ui_close(void)
 {
-    wifi_composer_close();if(root){lv_obj_delete_async(root);root=NULL;}title=live_value=live_note=age_label=history_note=legend_note=chart=metric_button=metric_label=NULL;series_a=series_b=series_c=NULL;for(int i=0;i<2;i++)variant_btn[i]=variant_label[i]=NULL;for(int i=0;i<3;i++)fan_control_btn[i]=fan_control_label[i]=NULL;for(int i=0;i<7;i++)row[i]=row_title[i]=row_text[i]=NULL;last_live_pc_sequence=UINT32_MAX;last_local_pc_sequence=UINT32_MAX;last_wifi_sequence=UINT32_MAX;last_live_second=last_local_second=last_wifi_second=-1;last_live_id=last_live_pending=last_local_mode=-1;
+    wifi_composer_close();if(root){lv_obj_delete_async(root);root=NULL;}title=live_value=live_note=age_label=history_note=legend_note=chart=metric_button=metric_label=NULL;series_a=series_b=series_c=NULL;for(int i=0;i<2;i++)variant_btn[i]=variant_label[i]=NULL;for(int i=0;i<5;i++)fan_control_btn[i]=fan_control_label[i]=NULL;for(int i=0;i<7;i++)row[i]=row_title[i]=row_text[i]=NULL;last_live_pc_sequence=UINT32_MAX;last_local_pc_sequence=UINT32_MAX;last_wifi_sequence=UINT32_MAX;last_live_second=last_local_second=last_wifi_second=-1;last_live_id=last_live_pending=last_local_mode=-1;
     wifi_state_label=wifi_ssid_label=wifi_ip_label=wifi_host_label=wifi_scan_btn=wifi_config_btn=wifi_connect_btn=wifi_forget_btn=NULL;for(int i=0;i<OPSDECK_WIFI_SCAN_MAX;i++)wifi_ap_btn[i]=wifi_ap_label[i]=NULL;opsdeck_opsview_deactivate();
 }
 void opsdeck_screen_ui_open(opsdeck_screen_mode_t next)
@@ -155,7 +160,7 @@ void opsdeck_screen_ui_open(opsdeck_screen_mode_t next)
         live_value=label(root,20,62,400,"--",&lv_font_montserrat_24,INK);live_note=label(root,20,102,420,"Waiting for live sample",&lv_font_montserrat_14,MUTED);
         const char *wn[]={"15m","1h","24h","7d"};for(int i=0;i<4;i++)window_btn[i]=button(root,456+i*82,58,76,34,wn[i],window_event,(void*)(intptr_t)i,&window_label[i]);
         for(int i=0;i<2;i++){variant_btn[i]=button(root,456+i*72,101,66,32,i==0?"C:":"D:",variant_event,(void*)(intptr_t)i,&variant_label[i]);if(history_id()!=8)lv_obj_add_flag(variant_btn[i],LV_OBJ_FLAG_HIDDEN);}
-        if(mode==OPS_SCREEN_FANS){fan_control_btn[0]=button(root,456,101,72,32,"AUTO",fan_control_event,(void*)(intptr_t)1,&fan_control_label[0]);fan_control_btn[1]=button(root,536,101,72,32,"MAX",fan_control_event,(void*)(intptr_t)2,&fan_control_label[1]);fan_control_btn[2]=button(root,616,101,92,32,"MANUAL",fan_control_event,(void*)(intptr_t)3,&fan_control_label[2]);lv_obj_add_state(fan_control_btn[2],LV_STATE_DISABLED);lv_obj_set_style_text_color(fan_control_label[2],color(MUTED),0);}
+        if(mode==OPS_SCREEN_FANS){fan_control_btn[0]=button(root,456,101,62,32,"AUTO",fan_control_event,(void*)(intptr_t)1,&fan_control_label[0]);fan_control_btn[1]=button(root,524,101,62,32,"MAX",fan_control_event,(void*)(intptr_t)2,&fan_control_label[1]);fan_control_btn[2]=button(root,592,101,44,32,"-5",fan_control_event,(void*)(intptr_t)3,&fan_control_label[2]);fan_control_btn[3]=button(root,642,101,94,32,"MAN 70%",fan_control_event,(void*)(intptr_t)4,&fan_control_label[3]);fan_control_btn[4]=button(root,742,101,44,32,"+5",fan_control_event,(void*)(intptr_t)5,&fan_control_label[4]);}
         if(mode==OPS_SCREEN_HISTORY){button(root,600,101,82,32,"< METRIC",metric_event,(void*)(intptr_t)-1,NULL);metric_button=button(root,688,101,100,32,"METRIC >",metric_event,(void*)(intptr_t)1,&metric_label);}
         stats[0]=label(root,20,145,240,"MIN --",&lv_font_montserrat_16,CYAN);stats[1]=label(root,280,145,240,"AVG --",&lv_font_montserrat_16,GREEN);stats[2]=label(root,540,145,240,"MAX --",&lv_font_montserrat_16,PURPLE);
         chart=lv_chart_create(root);lv_obj_set_pos(chart,18,180);lv_obj_set_size(chart,764,208);lv_obj_set_style_bg_color(chart,color(CARD),0);lv_obj_set_style_border_color(chart,color(EDGE),0);lv_obj_set_style_border_width(chart,1,0);lv_obj_set_style_line_color(chart,color(EDGE),LV_PART_MAIN);lv_obj_set_style_size(chart,0,0,LV_PART_INDICATOR);lv_chart_set_type(chart,LV_CHART_TYPE_LINE);lv_chart_set_point_count(chart,48);lv_chart_set_range(chart,LV_CHART_AXIS_PRIMARY_Y,0,100);series_a=lv_chart_add_series(chart,color(CYAN),LV_CHART_AXIS_PRIMARY_Y);series_b=lv_chart_add_series(chart,color(GREEN),LV_CHART_AXIS_PRIMARY_Y);series_c=lv_chart_add_series(chart,color(PURPLE),LV_CHART_AXIS_PRIMARY_Y);
@@ -182,12 +187,18 @@ static void update_live(int64_t now)
     lv_label_set_text(live_value,b);lv_label_set_text(live_note,n);lv_obj_set_style_text_color(live_value,color(live?INK:MUTED),0);
     if(mode==OPS_SCREEN_FANS&&fan_control_btn[0]){
         bool pending=fan_control_pending_us>0&&now-fan_control_pending_us<15000000;
-        if(pending&&(p.valid&PC_FAN_CONTROL)&&!p.fan_control_busy&&p.fan_control_mode==fan_control_pending_mode){fan_control_pending_us=0;fan_control_pending_mode=0;pending=false;}
-        if(fan_control_pending_us>0&&now-fan_control_pending_us>=15000000){fan_control_pending_us=0;fan_control_pending_mode=0;pending=false;}
-        bool control=live&&(p.valid&PC_FAN_CONTROL)&&p.fan_control_supported;int selected=p.fan_control_mode==1?0:p.fan_control_mode==2?1:-1;int requested=fan_control_pending_mode==1?0:fan_control_pending_mode==2?1:-1;
-        for(int i=0;i<3;i++){
-            bool disabled=i==2||!control||p.fan_control_busy||pending||i==selected;if(disabled)lv_obj_add_state(fan_control_btn[i],LV_STATE_DISABLED);else lv_obj_remove_state(fan_control_btn[i],LV_STATE_DISABLED);
-            uint32_t bc=(pending&&i==requested)?AMBER:(i==selected?CYAN:EDGE);uint32_t tc=i==2||!control?MUTED:((pending&&i==requested)?AMBER:(i==selected?CYAN:INK));
+        if(!pending&&(p.valid&PC_FAN_CONTROL)&&p.fan_manual_supported&&p.fan_control_speed_pct>=50&&p.fan_control_speed_pct<=100)fan_manual_target=p.fan_control_speed_pct;
+        if(pending&&(p.valid&PC_FAN_CONTROL)&&!p.fan_control_busy&&p.fan_control_mode==fan_control_pending_mode&&(fan_control_pending_mode!=3||p.fan_control_speed_pct==fan_control_pending_speed)){fan_control_pending_us=0;fan_control_pending_mode=0;fan_control_pending_speed=0;pending=false;}
+        if(fan_control_pending_us>0&&now-fan_control_pending_us>=15000000){fan_control_pending_us=0;fan_control_pending_mode=0;fan_control_pending_speed=0;pending=false;}
+        bool control=live&&(p.valid&PC_FAN_CONTROL)&&p.fan_control_supported;bool manual=control&&p.fan_manual_supported;int selected=p.fan_control_mode==1?0:p.fan_control_mode==2?1:p.fan_control_mode==3?3:-1;int requested=fan_control_pending_mode==1?0:fan_control_pending_mode==2?1:fan_control_pending_mode==3?3:-1;
+        snprintf(b,sizeof(b),"MAN %d%%",fan_manual_target);lv_label_set_text(fan_control_label[3],b);
+        for(int i=0;i<5;i++){
+            bool disabled=!control||p.fan_control_busy||pending||i==selected;
+            if(i==2)disabled=!manual||p.fan_control_busy||pending||fan_manual_target<=50;
+            else if(i==4)disabled=!manual||p.fan_control_busy||pending||fan_manual_target>=100;
+            else if(i==3)disabled=!manual||p.fan_control_busy||pending||(selected==3&&p.fan_control_speed_pct==fan_manual_target);
+            if(disabled)lv_obj_add_state(fan_control_btn[i],LV_STATE_DISABLED);else lv_obj_remove_state(fan_control_btn[i],LV_STATE_DISABLED);
+            uint32_t bc=(pending&&i==requested)?AMBER:(i==selected?CYAN:EDGE);uint32_t tc=!control||(i>=2&&!manual)?MUTED:((pending&&i==requested)?AMBER:(i==selected?CYAN:INK));
             lv_obj_set_style_border_color(fan_control_btn[i],color(bc),0);lv_obj_set_style_text_color(fan_control_label[i],color(tc),0);
         }
     }

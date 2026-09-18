@@ -12,7 +12,7 @@ public sealed class MainForm : Form
     private readonly Button configure=new(){Text="Bilgisayar / İki Cloudflare hesabı",AutoSize=true};private bool exiting,sessionLocked;
     public MainForm(LocalSettings settings,bool startInTray=false)
     {
-        this.settings=settings;Text="ALAZ OPSDECK — M6.18-A / Fast Serial";ClientSize=new Size(1280,780);MinimumSize=new Size(1040,660);StartPosition=FormStartPosition.CenterScreen;
+        this.settings=settings;Text="ALAZ OPSDECK — M6.19-A / Fan Manual";ClientSize=new Size(1280,780);MinimumSize=new Size(1040,660);StartPosition=FormStartPosition.CenterScreen;
         OpsDeckTheme.Apply(this);if(startInTray){WindowState=FormWindowState.Minimized;ShowInTaskbar=false;}
         grid.Columns.Add("source","KAYNAK");grid.Columns.Add("state","DURUM");grid.Columns.Add("value","ÖLÇÜM");grid.Columns.Add("detail","AYRINTI / VERİ YAŞI");
         grid.Columns[0].Width=190;grid.Columns[1].Width=115;grid.Columns[2].Width=190;grid.Columns[3].AutoSizeMode=DataGridViewAutoSizeColumnMode.Fill;grid.DefaultCellStyle.WrapMode=DataGridViewTriState.True;OpsDeckTheme.StyleGrid(grid);
@@ -61,7 +61,7 @@ public sealed class MainForm : Form
         var menu=new ContextMenuStrip();menu.Items.Add("ALAZ OPSDECK'i aç",null,(_,_)=>ShowWindow());menu.Items.Add("Durdur ve çık",null,async(_,_)=>await Exit());tray.ContextMenuStrip=menu;tray.DoubleClick+=(_,_)=>ShowWindow();
         configure.Click+=async(_,_)=>{using var dialog=new SettingsForm(settings);if(dialog.ShowDialog(this)==DialogResult.OK){configure.Enabled=false;try{if(engine!=null)await engine.DisposeAsync();engine=new(settings.Load(),settings){Locked=sessionLocked};engine.Start();engine.StartCodexTelemetry();}finally{configure.Enabled=true;}}};
         foreach(var label in new[]{connection,sites}){label.TextChanged+=(_,_)=>FitLabel(label);label.SizeChanged+=(_,_)=>FitLabel(label);}
-        timer.Tick+=(_,_)=>RefreshStatus();Shown+=(_,_)=>{Text="ALAZ OPSDECK — M6.18-A / Fast Serial";engine=new(settings.Load(),settings){Locked=sessionLocked};engine.Start();engine.StartCodexTelemetry();timer.Start();if(startInTray)BeginInvoke(new Action(()=>{ShowInTaskbar=false;Hide();}));};
+        timer.Tick+=(_,_)=>RefreshStatus();Shown+=(_,_)=>{Text="ALAZ OPSDECK — M6.19-A / Fan Manual";engine=new(settings.Load(),settings){Locked=sessionLocked};engine.Start();engine.StartCodexTelemetry();timer.Start();if(startInTray)BeginInvoke(new Action(()=>{ShowInTaskbar=false;Hide();}));};
         FormClosing+=(_,e)=>{if(!exiting){e.Cancel=true;ShowInTaskbar=false;Hide();}};SystemEvents.SessionSwitch+=SessionChanged;SystemEvents.PowerModeChanged+=PowerChanged;
     }
     private static void FitLabel(Label label)
