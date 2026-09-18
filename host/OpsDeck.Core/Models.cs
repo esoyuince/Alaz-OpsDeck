@@ -29,7 +29,7 @@ public sealed record FleetState(AgentSample Agents,Metric Workers,Metric D1,Metr
         var spark=quotas.FirstOrDefault(q=>q.Id.Contains("bengalfox",StringComparison.OrdinalIgnoreCase)||q.Name.Contains("Spark",StringComparison.OrdinalIgnoreCase));
         int Used(CodexQuotaWindow? w)=>w?.UsedPercent??-1;int Left(CodexQuotaWindow? w)=>w?.RemainingPercent??-1;
         int Window(CodexQuotaWindow? w)=>w?.WindowMinutes is long m?(int)Math.Clamp(m,0,525600):0;int Counter(long? v)=>v.HasValue?(int)Math.Clamp(v.Value,0,2_000_000_000):-1;
-        string? Reset(CodexQuota? q){DateTimeOffset? p=q?.Primary?.ResetsAt,sec=q?.Secondary?.ResetsAt;DateTimeOffset? at=p.HasValue&&sec.HasValue?(p.Value<=sec.Value?p:sec):(p??sec);return at?.ToLocalTime().ToString("dd.MM HH:mm");}
+        string? Reset(CodexQuota? q){DateTimeOffset? p=q?.Primary?.ResetsAt,sec=q?.Secondary?.ResetsAt;DateTimeOffset? at=p.HasValue&&sec.HasValue?(p.Value<=sec.Value?p:sec):(p??sec);return at.HasValue&&at.Value>now?at.Value.ToLocalTime().ToString("dd.MM HH:mm"):null;}
         return JsonSerializer.Serialize(new {type="opsdeck.status.v1",locked,agents=new{
             codex_count=locked?-1:Agents.CodexCount,
             codex_state=(int)(locked?SourceState.NoData:sampleOld?SourceState.Stale:Agents.CodexState),

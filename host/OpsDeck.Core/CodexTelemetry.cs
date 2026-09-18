@@ -79,7 +79,7 @@ public static class CodexTelemetryParser
 }
 public sealed class CodexTelemetrySampler(HostConfig config)
 {
-    public const int SampleSeconds=300;
+    public const int SampleSeconds=300;public const int RetrySeconds=30;
     private static readonly UTF8Encoding ProtocolUtf8=new(false,true);
     internal static ProcessStartInfo AppServerStartInfo(string exe)
     {

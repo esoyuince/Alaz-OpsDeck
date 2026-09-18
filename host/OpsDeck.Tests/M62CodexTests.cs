@@ -30,6 +30,34 @@ public static class M62CodexTests
             C("panel-wire-spark",a.GetProperty("codex_spark_used").GetInt32()==5&&a.GetProperty("codex_spark_remaining").GetInt32()==95&&a.GetProperty("codex_spark_window_m").GetInt32()==300);
         }
         C("panel-wire-budget",System.Text.Encoding.UTF8.GetByteCount(panelWire)<3000);
+
+        var cacheNow=DateTimeOffset.UtcNow;
+        var cacheReset=cacheNow.AddHours(3);
+        var cacheSample=sample with{
+            CollectedAt=cacheNow,
+            Quotas=[new CodexQuota("codex","Codex","pro",new CodexQuotaWindow(71,10080,cacheReset),null)]
+        };
+        string cacheDir=Path.Combine(Path.GetTempPath(),"opsdeck-m62-cache-"+Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(cacheDir);
+        try
+        {
+            var cache=new CodexUsageCache(cacheDir);cache.Save(cacheSample);
+            var restored=cache.Load(cacheNow.AddMinutes(5));
+            C("cache-restores-stale",restored?.State==SourceState.Stale&&restored.CollectedAt==cacheNow&&restored.EffectiveQuotas.Single().Primary?.UsedPercent==71);
+            var failed=new CodexUsageSnapshot(SourceState.Error,cacheNow.AddMinutes(5),Detail:"transient");
+            var fallback=CodexUsageCache.Fallback(restored,failed,cacheNow.AddMinutes(5));
+            C("failure-retains-quota",fallback?.State==SourceState.Stale&&fallback.EffectiveQuotas.Single().Primary?.RemainingPercent==29);
+            using var staleWire=JsonDocument.Parse(FleetState.Empty.Wire(cacheNow.AddMinutes(5),false,null,fallback));
+            var staleAgents=staleWire.RootElement.GetProperty("agents");
+            C("stale-wire-keeps-quota",staleAgents.GetProperty("codex_usage_state").GetInt32()==3&&staleAgents.GetProperty("codex_quota_used").GetInt32()==71);
+            C("cache-expires",cache.Load(cacheNow.Add(CodexUsageCache.MaxAge).AddSeconds(1))==null);
+            var expiredReset=cacheSample with{Quotas=[new CodexQuota("codex","Codex","pro",new CodexQuotaWindow(71,10080,cacheNow.AddSeconds(-1)),null)]};
+            using var expiredWire=JsonDocument.Parse(FleetState.Empty.Wire(cacheNow,false,null,expiredReset));
+            C("expired-reset-hidden",!expiredWire.RootElement.GetProperty("agents").TryGetProperty("codex_quota_reset_local",out _));
+            C("retry-shorter-than-sample",CodexTelemetrySampler.RetrySeconds<CodexTelemetrySampler.SampleSeconds&&CodexTelemetrySampler.RetrySeconds==30);
+        }
+        finally{Directory.Delete(cacheDir,true);}
+
         using(var lockedDoc=JsonDocument.Parse(FleetState.Empty.Wire(now,true,null,sample)))
         {
             var a=lockedDoc.RootElement.GetProperty("agents");C("panel-wire-lock-hides-quota",a.GetProperty("codex_quota_used").GetInt32()==-1&&a.GetProperty("codex_spark_used").GetInt32()==-1&&a.GetProperty("codex_usage_state").GetInt32()==4);

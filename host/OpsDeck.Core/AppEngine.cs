@@ -173,7 +173,19 @@ public sealed partial class AppEngine : IAsyncDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed)!=0,this);
         if(Volatile.Read(ref started)==0)throw new InvalidOperationException("Host must be started before Codex telemetry.");
         if(Interlocked.Exchange(ref codexTelemetryStarted,1)!=0)return;
-        lock(gate)tasks.Add(Task.Run(CodexUsageLoop));
+        var cache=new CodexUsageCache(settings.DirectoryPath);
+        try
+        {
+            var restored=cache.Load(DateTimeOffset.UtcNow);
+            if(restored!=null)
+            {
+                Volatile.Write(ref codexUsage,restored);
+                log.Event("codex_usage_cache_restored",new{age_s=Freshness.AgeSeconds(restored.CollectedAt,DateTimeOffset.UtcNow),quotas=restored.EffectiveQuotas.Select(q=>q.Id)});
+            }
+        }
+        catch(Exception e)when(e is IOException or UnauthorizedAccessException or InvalidDataException)
+        {log.Event("codex_usage_cache_unavailable",new{kind=e.GetType().Name});}
+        lock(gate)tasks.Add(Task.Run(()=>CodexUsageLoop(cache)));
     }
     private void Update(Func<FleetState,FleetState> transform){lock(gate)fleet=transform(fleet);}
     private void UpdateAccount(int slot,Func<AccountState,AccountState> transform)
@@ -190,7 +202,7 @@ public sealed partial class AppEngine : IAsyncDisposable
         ReloadProjectMappings();
         try{
             var store=new OperationalEventStore(Path.Combine(settings.DirectoryPath,"ops-events.db"));Volatile.Write(ref operationalStore,store);
-            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.19-A / Fan Manual"));
+            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.20-A / Codex Quota Resilience"));
         }catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("ops_timeline_unavailable",new{kind=e.GetType().Name});}
         try{Volatile.Write(ref telemetryHistory,new TelemetryHistoryStore(Path.Combine(settings.DirectoryPath,"telemetry-history.db")));}
         catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("telemetry_history_unavailable",new{kind=e.GetType().Name});}
@@ -249,7 +261,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                 finally{cf.Dispose();billingCf?.Dispose();}
             }));
         }
-        log.Event("host_started",new{version="M6.19-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
+        log.Event("host_started",new{version="M6.20-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
     }
     private bool UsbPrimaryHealthy()
     {
@@ -335,14 +347,27 @@ public sealed partial class AppEngine : IAsyncDisposable
         var store=Volatile.Read(ref agentCommandStore);var registry=Volatile.Read(ref agentPayloads);if(store==null||registry==null)return;
         store.ExpireDue(DateTimeOffset.UtcNow);var keep=store.ReadRecent(500).Where(x=>x.Provider==AgentProviderKind.Codex&&(x.Action is AgentCommandAction.SubmitTask or AgentCommandAction.ContinueTask)&&(x.State is AgentCommandState.Requested or AgentCommandState.Approved)).Select(x=>x.RequestId);registry.Prune(keep);
     }
-    private async Task CodexUsageLoop()
+    private async Task CodexUsageLoop(CodexUsageCache cache)
     {
-        var sampler=new CodexTelemetrySampler(config);using var timer=new PeriodicTimer(TimeSpan.FromSeconds(CodexTelemetrySampler.SampleSeconds));
-        do {
-            var sample=await sampler.SampleAsync(stop.Token);Volatile.Write(ref codexUsage,sample);
-            if(sample.State==SourceState.Ok)log.Event("codex_usage_observed",new{plan=sample.PlanType,lifetime_tokens=sample.LifetimeTokens,today_tokens=sample.TodayTokens,quotas=sample.EffectiveQuotas.Select(q=>new{q.Id,primary_used=q.Primary?.UsedPercent,secondary_used=q.Secondary?.UsedPercent})});
-            else log.Event("codex_usage_unavailable",new{state=sample.State.ToString(),kind=sample.Detail});
-        }while(await timer.WaitForNextTickAsync(stop.Token));
+        var sampler=new CodexTelemetrySampler(config);CodexUsageSnapshot? lastGood=CodexUsageCache.Usable(CodexUsage,DateTimeOffset.UtcNow)?CodexUsage:null;
+        while(!stop.IsCancellationRequested)
+        {
+            var sample=await sampler.SampleAsync(stop.Token);int delaySeconds;
+            if(sample.State==SourceState.Ok)
+            {
+                lastGood=sample;Volatile.Write(ref codexUsage,sample);delaySeconds=CodexTelemetrySampler.SampleSeconds;
+                try{cache.Save(sample);}catch(Exception e)when(e is IOException or UnauthorizedAccessException or InvalidDataException){log.Event("codex_usage_cache_write_failed",new{kind=e.GetType().Name});}
+                log.Event("codex_usage_observed",new{plan=sample.PlanType,lifetime_tokens=sample.LifetimeTokens,today_tokens=sample.TodayTokens,quotas=sample.EffectiveQuotas.Select(q=>new{q.Id,primary_used=q.Primary?.UsedPercent,secondary_used=q.Secondary?.UsedPercent})});
+            }
+            else
+            {
+                var fallback=CodexUsageCache.Fallback(lastGood,sample,DateTimeOffset.UtcNow);
+                Volatile.Write(ref codexUsage,fallback??sample);delaySeconds=CodexTelemetrySampler.RetrySeconds;
+                log.Event("codex_usage_unavailable",new{state=sample.State.ToString(),kind=sample.Detail});
+                if(fallback!=null)log.Event("codex_usage_fallback",new{age_s=Freshness.AgeSeconds(fallback.CollectedAt,DateTimeOffset.UtcNow),retry_s=delaySeconds,quotas=fallback.EffectiveQuotas.Select(q=>new{q.Id,primary_used=q.Primary?.UsedPercent})});
+            }
+            await Task.Delay(TimeSpan.FromSeconds(delaySeconds),stop.Token);
+        }
     }    private async Task HealthLoop()
     {
         var urls=HostingScope.Urls(config.Sites.Concat(Accounts.SelectMany(a=>a.Profile.Sites)));
