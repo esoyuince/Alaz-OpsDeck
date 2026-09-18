@@ -21,7 +21,7 @@ public sealed record CloudAccountConfig
 public sealed record AccountState(CloudAccountConfig Profile,Metric Workers,Metric D1,Metric R2,Metric Cost,Metric Hosting,Metric? Subscription=null)
 {
     public static AccountState Empty(CloudAccountConfig p)=>new(p,Metric.Setup(),Metric.Setup(),Metric.Setup(),Metric.Setup(),Metric.Setup());
-    public string Wire(int slot,int total,string generation,DateTimeOffset now)=>JsonSerializer.Serialize(new {type="opsdeck.cloud.v1",slot,total,generation,name=PanelName(Profile.Name),enabled=Profile.Enabled,workers=Workers.Wire(now,180),d1=D1.Wire(now,180),r2=R2.Wire(now,900),hosting=Hosting.Wire(now,180),cost=BillingDisplay.ForAccount(this,now).Wire(now,7200)},Json.Options);
+    public string Wire(int slot,int total,string generation,DateTimeOffset now,CloudPanelSummary? summary=null)=>JsonSerializer.Serialize(new {type="opsdeck.cloud.v1",slot,total,generation,name=PanelName(Profile.Name),enabled=Profile.Enabled,workers=Workers.Wire(now,180),d1=D1.Wire(now,180),r2=R2.Wire(now,900),hosting=Hosting.Wire(now,180),cost=BillingDisplay.ForAccount(this,now).Wire(now,7200),summary=summary?.Wire()},Json.Options);
     public static string PanelName(string name)
     {
         string ascii=name.Replace('ı','i').Replace('İ','I').Replace('ş','s').Replace('Ş','S').Replace('ğ','g').Replace('Ğ','G').Normalize(NormalizationForm.FormD);

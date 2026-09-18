@@ -30,7 +30,7 @@ static lv_obj_t *body,*uptime,*badge,*top_brand,*home_btn,*settings_transport,*s
 static lv_obj_t *home_root,*dynamic_root;static bool home_cached;
 static lv_obj_t *cpu_arc,*gpu_arc,*cpu_value,*gpu_value,*gpu_temp;
 static lv_obj_t *intel_arc,*intel_value,*chassis_temp,*intel_shared,*fan_text;
-static lv_obj_t *cpu_temp,*disk_text,*disk_detail[2],*disk_scope,*billing_period,*billing_source,*hosting_scope;
+static lv_obj_t *cpu_temp,*disk_text,*disk_detail[2],*disk_scope,*billing_period,*billing_source,*hosting_scope,*cloud_resource_summary,*cloud_queue_summary,*cloud_ai_summary,*cloud_gateway_summary;
 static lv_obj_t *cloud_buttons[3],*cloud_button_labels[3],*cloud_scope,*cloud_health_badge,*cloud_account_health[5];
 static int current_page,cloud_selection;
 static void show_page(int page);
@@ -61,7 +61,7 @@ static home_refs_t home_refs;
 
 static void clear_page_refs(void)
 {
-    cpu_temp=disk_text=disk_scope=billing_period=billing_source=hosting_scope=NULL;disk_detail[0]=disk_detail[1]=NULL;
+    cpu_temp=disk_text=disk_scope=billing_period=billing_source=hosting_scope=cloud_resource_summary=cloud_queue_summary=cloud_ai_summary=cloud_gateway_summary=NULL;disk_detail[0]=disk_detail[1]=NULL;
     intel_arc=intel_value=chassis_temp=intel_shared=fan_text=cloud_scope=cloud_health_badge=NULL;
     for(int i=0;i<3;i++){cloud_buttons[i]=cloud_button_labels[i]=NULL;}for(int i=0;i<5;i++)cloud_account_health[i]=NULL;
     cpu_arc=gpu_arc=cpu_value=gpu_value=gpu_temp=NULL;
@@ -438,12 +438,12 @@ static void refresh_providers(int64_t now){
   lv_label_set_text(link_last,b);
  }
  opsdeck_metric_t metrics[5];memcpy(metrics,s.metrics,sizeof(metrics));
- int cloud_age=age;bool cloud_present=s.received_us>0;bool cloud_enabled=true;
+ int cloud_age=age;bool cloud_present=s.received_us>0;bool cloud_enabled=true;opsdeck_cloud_t selected_cloud={0};
  char scope[48]="ALL + GENERAL HTTPS";
  if(current_page==3&&cloud_selection>0){
-  opsdeck_cloud_t a;opsdeck_cloud_copy(cloud_selection-1,&a);memcpy(metrics,a.metrics,sizeof(metrics));
-  cloud_present=a.received_us>0;cloud_age=cloud_present?(int)((now-a.received_us)/1000000):999999;cloud_enabled=a.enabled;
-  snprintf(scope,sizeof(scope),"%s",cloud_present?a.name:(cloud_selection==1?"VetaKeep":"Other Projects"));
+  opsdeck_cloud_copy(cloud_selection-1,&selected_cloud);memcpy(metrics,selected_cloud.metrics,sizeof(metrics));
+  cloud_present=selected_cloud.received_us>0;cloud_age=cloud_present?(int)((now-selected_cloud.received_us)/1000000):999999;cloud_enabled=selected_cloud.enabled;
+  snprintf(scope,sizeof(scope),"%s",cloud_present?selected_cloud.name:(cloud_selection==1?"VetaKeep":"Other Projects"));
  }
  if(cloud_scope){snprintf(b,sizeof(b),"%s%s",scope,cloud_selection>0&&!cloud_enabled?" / SETUP":"");lv_label_set_text(cloud_scope,b);}
  for(int i=0;i<3;i++)if(cloud_buttons[i]){
@@ -485,7 +485,35 @@ static void refresh_providers(int64_t now){
   lv_label_set_text(billing_period,b);
  }
  if(billing_source){opsdeck_metric_t *m=&metrics[4];if(m->source_end[0]&&m->period_start[0]&&m->period_end[0])snprintf(b,sizeof(b),"Source %s | window %s..%s",m->source_end,m->period_start,m->period_end);else if(m->source_end[0])snprintf(b,sizeof(b),"Usage source: %s",m->source_end);else snprintf(b,sizeof(b),"Usage source: no dated record");lv_label_set_text(billing_source,b);}
- if(provider_summary){
+ if(current_page==3&&cloud_resource_summary){
+  if(cloud_selection==0){
+   lv_label_set_text(cloud_resource_summary,"Resources: choose an account for inventory coverage");
+   lv_label_set_text(cloud_queue_summary,"Queues: account cache is not combined");
+   lv_label_set_text(cloud_ai_summary,"Workers AI: account cache is not combined");
+   lv_label_set_text(cloud_gateway_summary,"AI Gateway: account cache is not combined");
+   lv_obj_set_style_text_color(cloud_resource_summary,col(MUTED),0);lv_obj_set_style_text_color(cloud_queue_summary,col(MUTED),0);lv_obj_set_style_text_color(cloud_ai_summary,col(MUTED),0);lv_obj_set_style_text_color(cloud_gateway_summary,col(MUTED),0);
+  }else if(!cloud_present||!selected_cloud.summary_present){
+   lv_label_set_text(cloud_resource_summary,"Resources: waiting for host cache summary");
+   lv_label_set_text(cloud_queue_summary,"Queues: waiting for host cache summary");
+   lv_label_set_text(cloud_ai_summary,"Workers AI: waiting for host cache summary");
+   lv_label_set_text(cloud_gateway_summary,"AI Gateway: waiting for host cache summary");
+   lv_obj_set_style_text_color(cloud_resource_summary,col(MUTED),0);lv_obj_set_style_text_color(cloud_queue_summary,col(MUTED),0);lv_obj_set_style_text_color(cloud_ai_summary,col(MUTED),0);lv_obj_set_style_text_color(cloud_gateway_summary,col(MUTED),0);
+  }else{
+   char v1[24],v2[24],v3[24];
+   if(selected_cloud.resource_count>=0)snprintf(b,sizeof(b),"Resources %d | W:%d D1:%d R2:%d P:%d | lists %d/4",selected_cloud.resource_count,selected_cloud.worker_count,selected_cloud.d1_count,selected_cloud.r2_count,selected_cloud.pages_count,selected_cloud.complete_sources);
+   else snprintf(b,sizeof(b),"Resources -- | lists %d/4 | %s",selected_cloud.complete_sources,state_name(selected_cloud.inventory_state));
+   lv_label_set_text(cloud_resource_summary,b);lv_obj_set_style_text_color(cloud_resource_summary,col(cloud_state_color(selected_cloud.inventory_state)),0);
+   if(selected_cloud.queue_count>=0)snprintf(b,sizeof(b),"Queues %d | metrics %d/%d | %s",selected_cloud.queue_count,selected_cloud.queue_observed,selected_cloud.queue_count,state_name(selected_cloud.queue_state));
+   else snprintf(b,sizeof(b),"Queues -- | %s",state_name(selected_cloud.queue_state));
+   lv_label_set_text(cloud_queue_summary,b);lv_obj_set_style_text_color(cloud_queue_summary,col(cloud_state_color(selected_cloud.queue_state)),0);
+   if(selected_cloud.ai_requests>=0){compact_value(v1,sizeof(v1),selected_cloud.ai_requests);if(selected_cloud.ai_input_tokens>=0)compact_value(v2,sizeof(v2),selected_cloud.ai_input_tokens);else snprintf(v2,sizeof(v2),"--");if(selected_cloud.ai_output_tokens>=0)compact_value(v3,sizeof(v3),selected_cloud.ai_output_tokens);else snprintf(v3,sizeof(v3),"--");snprintf(b,sizeof(b),"Workers AI %s | req %s | in %s | out %s",state_name(selected_cloud.ai_state),v1,v2,v3);}
+   else snprintf(b,sizeof(b),"Workers AI %s | no observed total",state_name(selected_cloud.ai_state));
+   lv_label_set_text(cloud_ai_summary,b);lv_obj_set_style_text_color(cloud_ai_summary,col(cloud_state_color(selected_cloud.ai_state)),0);
+   if(selected_cloud.gateway_requests>=0){compact_value(v1,sizeof(v1),selected_cloud.gateway_requests);if(selected_cloud.gateway_errors>=0)compact_value(v2,sizeof(v2),selected_cloud.gateway_errors);else snprintf(v2,sizeof(v2),"--");if(selected_cloud.gateway_cached>=0)compact_value(v3,sizeof(v3),selected_cloud.gateway_cached);else snprintf(v3,sizeof(v3),"--");snprintf(b,sizeof(b),"AI Gateway %s | req %s | err %s | cache %s",state_name(selected_cloud.gateway_state),v1,v2,v3);}
+   else snprintf(b,sizeof(b),"AI Gateway %s | no observed total",state_name(selected_cloud.gateway_state));
+   lv_label_set_text(cloud_gateway_summary,b);lv_obj_set_style_text_color(cloud_gateway_summary,col(cloud_state_color(selected_cloud.gateway_state)),0);
+  }
+ } if(provider_summary){
   if(current_page==3)snprintf(b,sizeof(b),cloud_present?"Host frame: %d s ago / not a source date":"Waiting for account frames",cloud_present?cloud_age:0);
   else snprintf(b,sizeof(b),"Host updates: %"PRIu32" | Age: %d s",s.sequence,s.received_us?age:0);
   lv_label_set_text(provider_summary,b);
@@ -579,17 +607,20 @@ static void show_page(int page)
             lv_obj_set_style_text_align(cloud_button_labels[i],LV_TEXT_ALIGN_CENTER,0);lv_obj_center(cloud_button_labels[i]);
             lv_obj_add_event_cb(cloud_buttons[i],cloud_select_event,LV_EVENT_CLICKED,(void*)(uintptr_t)i);
         }
-        cloud_scope=text(o,18,130,"ALL ACCOUNTS",&lv_font_montserrat_20,INK);lv_obj_set_width(cloud_scope,398);lv_label_set_long_mode(cloud_scope,LV_LABEL_LONG_DOT);
-        text(o,18,160,"HEALTH",&lv_font_montserrat_12,MUTED);
-        for(int i=0;i<5;i++){cloud_account_health[i]=text(o,18+i*78,179,"--",&lv_font_montserrat_12,MUTED);lv_obj_set_width(cloud_account_health[i],72);lv_obj_set_style_text_align(cloud_account_health[i],LV_TEXT_ALIGN_CENTER,0);}
-        hosting_scope=text(o,18,211,"Hosting scope",&lv_font_montserrat_14,MUTED);
-        billing_period=text(o,18,236,"Usage / monthly fixed fee",&lv_font_montserrat_14,MUTED);
-        billing_source=text(o,18,260,"Waiting for usage records",&lv_font_montserrat_12,MUTED);
-        lv_obj_set_width(billing_period,398);lv_label_set_long_mode(billing_period,LV_LABEL_LONG_DOT);
-        lv_obj_set_width(billing_source,398);lv_label_set_long_mode(billing_source,LV_LABEL_LONG_DOT);
-        text(o,18,288,"COST SNAPSHOT / NOT AN INVOICE",&lv_font_montserrat_14,MUTED);
-        provider_summary=text(o,18,319,"Waiting for host",&lv_font_montserrat_14,MUTED);
-        lv_obj_set_width(provider_summary,398);lv_label_set_long_mode(provider_summary,LV_LABEL_LONG_DOT);
+        cloud_scope=text(o,18,126,"ALL ACCOUNTS",&lv_font_montserrat_20,INK);lv_obj_set_width(cloud_scope,398);lv_label_set_long_mode(cloud_scope,LV_LABEL_LONG_DOT);
+        text(o,18,153,"HEALTH",&lv_font_montserrat_12,MUTED);
+        for(int i=0;i<5;i++){cloud_account_health[i]=text(o,18+i*78,170,"--",&lv_font_montserrat_12,MUTED);lv_obj_set_width(cloud_account_health[i],72);lv_obj_set_style_text_align(cloud_account_health[i],LV_TEXT_ALIGN_CENTER,0);}
+        hosting_scope=text(o,18,194,"HTTPS scope",&lv_font_montserrat_12,MUTED);
+        billing_period=text(o,18,214,"Usage / fixed fee | NOT AN INVOICE",&lv_font_montserrat_12,MUTED);
+        billing_source=text(o,18,234,"Waiting for usage records",&lv_font_montserrat_12,MUTED);
+        provider_summary=text(o,18,254,"Waiting for host",&lv_font_montserrat_12,MUTED);
+        lv_obj_t *cloud_lines[]={hosting_scope,billing_period,billing_source,provider_summary};for(int i=0;i<4;i++){lv_obj_set_width(cloud_lines[i],398);lv_label_set_long_mode(cloud_lines[i],LV_LABEL_LONG_DOT);}
+        text(o,18,279,"READ-ONLY CACHE COVERAGE",&lv_font_montserrat_12,CYAN);
+        cloud_resource_summary=text(o,18,300,"Resources: select an account",&lv_font_montserrat_12,MUTED);
+        cloud_queue_summary=text(o,18,323,"Queues: select an account",&lv_font_montserrat_12,MUTED);
+        cloud_ai_summary=text(o,18,346,"Workers AI: select an account",&lv_font_montserrat_12,MUTED);
+        cloud_gateway_summary=text(o,18,369,"AI Gateway: select an account",&lv_font_montserrat_12,MUTED);
+        lv_obj_t *summary_lines[]={cloud_resource_summary,cloud_queue_summary,cloud_ai_summary,cloud_gateway_summary};for(int i=0;i<4;i++){lv_obj_set_width(summary_lines[i],398);lv_label_set_long_mode(summary_lines[i],LV_LABEL_LONG_DOT);}
     } else if(page==4) {
         opsdeck_inventory_ui_create(page_parent);
     } else if(page==5) {
@@ -735,7 +766,7 @@ void opsdeck_ui_init(const opsdeck_board_t *b)
     lv_obj_remove_flag(s,LV_OBJ_FLAG_SCROLLABLE);
     top_brand=text(s,16,14,"ALAZ OPSDECK",&lv_font_montserrat_24,INK);lv_obj_add_flag(top_brand,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(top_brand,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     home_btn=lv_button_create(s);lv_obj_set_pos(home_btn,16,10);lv_obj_set_size(home_btn,116,36);lv_obj_set_style_bg_color(home_btn,col(CARD),0);lv_obj_set_style_border_color(home_btn,col(CYAN),0);lv_obj_set_style_border_width(home_btn,1,0);lv_obj_set_style_radius(home_btn,10,0);lv_obj_set_style_shadow_width(home_btn,0,0);lv_obj_add_event_cb(home_btn,top_home_event,LV_EVENT_CLICKED,NULL);lv_obj_t *hl=text(home_btn,0,0,LV_SYMBOL_HOME "  HOME",&lv_font_montserrat_14,INK);lv_obj_center(hl);lv_obj_add_flag(home_btn,LV_OBJ_FLAG_HIDDEN);
-    text(s,274,21,"M5.15-A / RESPONSIVE UI",&lv_font_montserrat_14,MUTED);
+    text(s,274,21,"M5.16-A / CLOUD CACHE",&lv_font_montserrat_14,MUTED);
     uptime=text(s,508,20,"UP 00:00:00",&lv_font_montserrat_14,MUTED);
     badge=text(s,690,17,"NO HOST",&lv_font_montserrat_16,MUTED);lv_obj_add_flag(badge,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(badge,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     body=lv_obj_create(s);lv_obj_remove_style_all(body);lv_obj_set_pos(body,12,54);lv_obj_set_size(body,776,414);lv_obj_remove_flag(body,LV_OBJ_FLAG_SCROLLABLE);

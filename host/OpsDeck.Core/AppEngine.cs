@@ -190,7 +190,7 @@ public sealed partial class AppEngine : IAsyncDisposable
         ReloadProjectMappings();
         try{
             var store=new OperationalEventStore(Path.Combine(settings.DirectoryPath,"ops-events.db"));Volatile.Write(ref operationalStore,store);
-            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.15-B / Codex Quota Fix"));
+            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.16-A / Cloud Cache"));
         }catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("ops_timeline_unavailable",new{kind=e.GetType().Name});}
         try{Volatile.Write(ref telemetryHistory,new TelemetryHistoryStore(Path.Combine(settings.DirectoryPath,"telemetry-history.db")));}
         catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("telemetry_history_unavailable",new{kind=e.GetType().Name});}
@@ -242,7 +242,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                 finally{cf.Dispose();}
             }));
         }
-        log.Event("host_started",new{version="M6.15-B",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
+        log.Event("host_started",new{version="M6.16-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
     }
     private bool UsbPrimaryHealthy()
     {
@@ -251,7 +251,7 @@ public sealed partial class AppEngine : IAsyncDisposable
     private string[] BuildWifiTelemetryFrames()
     {
         var now=DateTimeOffset.UtcNow;var result=new List<string>(12);if(PcIsFresh)result.Add(Pc.Wire(FanControl));if(Processes.CollectedAt.HasValue)result.Add(Processes.Wire());
-        result.Add(Fleet.Wire(now,Locked,LinkHealth,CodexUsage,ManagedCodex));var profiles=Accounts;for(int i=0;i<profiles.Length;i++)result.Add(profiles[i].Wire(i,profiles.Length,generation,now));
+        result.Add(Fleet.Wire(now,Locked,LinkHealth,CodexUsage,ManagedCodex));var profiles=Accounts;for(int i=0;i<profiles.Length;i++)result.Add(CloudWire(profiles[i],i,profiles.Length,now));
         result.Add(PanelAgentFrame());result.Add(PanelCodexSessionsFrame());result.Add(InventoryFrame(new PanelInventoryRequest()));return result.ToArray();
     }
     private async Task EdgeNodeLoop()
@@ -429,7 +429,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                     {
                         statusFrames.Enqueue(Fleet.Wire(DateTimeOffset.UtcNow,Locked,LinkHealth,CodexUsage,ManagedCodex));
                         var profiles=Accounts;
-                        for(int i=0;i<profiles.Length;i++)statusFrames.Enqueue(profiles[i].Wire(i,profiles.Length,generation,DateTimeOffset.UtcNow));
+                        for(int i=0;i<profiles.Length;i++){var cloudNow=DateTimeOffset.UtcNow;statusFrames.Enqueue(CloudWire(profiles[i],i,profiles.Length,cloudNow));}
                         statusFrames.Enqueue(PanelAgentFrame());statusFrames.Enqueue(PanelCodexSessionsFrame());nextStatus=now+5000;
                     }
                     if(now>=nextTx)
