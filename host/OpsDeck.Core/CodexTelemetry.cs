@@ -84,7 +84,20 @@ public sealed class CodexTelemetrySampler(HostConfig config)
     internal static ProcessStartInfo AppServerStartInfo(string exe)
     {
         var psi=new ProcessStartInfo(exe){UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true,StandardInputEncoding=ProtocolUtf8,StandardOutputEncoding=ProtocolUtf8,StandardErrorEncoding=ProtocolUtf8};
+        if(psi.Environment.TryGetValue("CODEX_HOME",out var codexHome)&&IsBridgeIsolatedCodexHome(codexHome))psi.Environment.Remove("CODEX_HOME");
         psi.ArgumentList.Add("app-server");psi.ArgumentList.Add("--stdio");return psi;
+    }
+    internal static bool IsBridgeIsolatedCodexHome(string? value)
+    {
+        if(string.IsNullOrWhiteSpace(value))return false;
+        try
+        {
+            string full=Path.GetFullPath(value).Replace(Path.AltDirectorySeparatorChar,Path.DirectorySeparatorChar);
+            string sep=Path.DirectorySeparatorChar.ToString();
+            string marker=sep+"chatgpt-codex-mcp-bridge"+sep+"data"+sep+"native"+sep;
+            return full.Contains(marker,StringComparison.OrdinalIgnoreCase);
+        }
+        catch(Exception e)when(e is ArgumentException or NotSupportedException or PathTooLongException){return false;}
     }
     public async Task<CodexUsageSnapshot> SampleAsync(CancellationToken external)
     {

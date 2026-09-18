@@ -35,6 +35,22 @@ public static class M62CodexTests
             var a=lockedDoc.RootElement.GetProperty("agents");C("panel-wire-lock-hides-quota",a.GetProperty("codex_quota_used").GetInt32()==-1&&a.GetProperty("codex_spark_used").GetInt32()==-1&&a.GetProperty("codex_usage_state").GetInt32()==4);
         }
         C("account-id-not-retained",!sample.ToString().Contains("secret-account",StringComparison.OrdinalIgnoreCase));
+        var detect=typeof(CodexTelemetrySampler).GetMethod("IsBridgeIsolatedCodexHome",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+        bool DetectHome(string value)=>detect!=null&&(bool)detect.Invoke(null,new object?[]{value})!;
+        C("bridge-home-detected",DetectHome(@"C:\Antigravity\chatgpt-codex-mcp-bridge\data\native\00000000-0000-0000-0000-000000000000"));
+        C("normal-home-preserved",!DetectHome(@"C:\Users\ender\.codex"));
+        var startInfo=typeof(CodexTelemetrySampler).GetMethod("AppServerStartInfo",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic);
+        string? oldCodexHome=Environment.GetEnvironmentVariable("CODEX_HOME");
+        try
+        {
+            Environment.SetEnvironmentVariable("CODEX_HOME",@"C:\Antigravity\chatgpt-codex-mcp-bridge\data\native\00000000-0000-0000-0000-000000000000");
+            var isolatedPsi=startInfo?.Invoke(null,new object[]{"codex.exe"}) as System.Diagnostics.ProcessStartInfo;
+            C("bridge-home-stripped",isolatedPsi!=null&&!isolatedPsi.Environment.ContainsKey("CODEX_HOME"));
+            Environment.SetEnvironmentVariable("CODEX_HOME",@"C:\Users\ender\custom-codex-home");
+            var normalPsi=startInfo?.Invoke(null,new object[]{"codex.exe"}) as System.Diagnostics.ProcessStartInfo;
+            C("normal-home-kept",normalPsi!=null&&normalPsi.Environment.TryGetValue("CODEX_HOME",out var kept)&&kept==@"C:\Users\ender\custom-codex-home");
+        }
+        finally{Environment.SetEnvironmentVariable("CODEX_HOME",oldCodexHome);}
         C("no-content-detail",sample.Detail.Contains("no prompt or response content",StringComparison.OrdinalIgnoreCase));
         C("aux-node",AgentSampler.IsAuxiliaryCodexParent("node"));
         C("aux-opsdeck",AgentSampler.IsAuxiliaryCodexParent("OpsDeck.Host"));
