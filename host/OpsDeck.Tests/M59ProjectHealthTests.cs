@@ -58,6 +58,9 @@ public static class M59ProjectHealthTests
         C("resource-health",all.Rows.Single(x=>x.Label=="Files").Health==(int)ProjectHealthState.Ok&&all.Rows.Single(x=>x.Label=="Files").Detail.StartsWith("OK |"));
         string wire=projects.Wire("1234abcd");using var doc=JsonDocument.Parse(wire);
         C("wire-project-health",doc.RootElement.GetProperty("project_health").GetInt32()==0&&doc.RootElement.GetProperty("rows")[0].TryGetProperty("health",out _));
+        string allWire=all.Wire("1234abcd");using var allDoc=JsonDocument.Parse(allWire);
+        string[] summaryNames=["project_workers","project_d1","project_r2","project_pages","project_ok","project_attention","project_degraded","project_unknown","project_health_age_s"];
+        C("wire-project-summary-omitted",summaryNames.All(name=>!doc.RootElement.TryGetProperty(name,out _))&&summaryNames.All(name=>!allDoc.RootElement.TryGetProperty(name,out _)));
         string selectedWire=selected.Wire("1234abcd");using var selectedDoc=JsonDocument.Parse(selectedWire);
         C("wire-project-summary",selectedDoc.RootElement.GetProperty("project_workers").GetInt32()==1&&selectedDoc.RootElement.GetProperty("project_pages").GetInt32()==1&&
             selectedDoc.RootElement.GetProperty("project_attention").GetInt32()==1&&selectedDoc.RootElement.GetProperty("project_health_age_s").GetInt32()==30);

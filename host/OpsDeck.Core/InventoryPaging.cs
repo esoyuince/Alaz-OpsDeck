@@ -41,16 +41,19 @@ public sealed record PanelInventoryPage(int Slot,int View,int RequestedPage,int 
             if(ProjectWorkers+ProjectD1+ProjectR2+ProjectPages!=TotalRows)throw new ArgumentException("Project resource counts do not match.");
             if(ProjectOk+ProjectAttention+ProjectDegraded+ProjectUnknown>ProjectWorkers+ProjectD1+ProjectR2)throw new ArgumentException("Project health counts do not match.");
         }else if(summary.Any(x=>x!=0)||ProjectHealthAgeS!=-1)throw new ArgumentException("Project summary outside selected project.");
-        var text=JsonSerializer.Serialize(new{type="opsdeck.inventory.v1",generation,test,slot=Slot,view=View,
-            requested_page=RequestedPage,page=Page,total_pages=TotalPages,total_rows=TotalRows,
-            known_resources=KnownResources,complete_sources=CompleteSources,source_count=SourceCount,
-            state=(int)State,age_s=AgeS,map_ok=MapOk,project_health=ProjectHealth,
-            project_health_label=string.IsNullOrEmpty(ProjectHealthLabel)?null:ProjectHealthLabel,
-            project_workers=ProjectWorkers,project_d1=ProjectD1,project_r2=ProjectR2,project_pages=ProjectPages,
-            project_ok=ProjectOk,project_attention=ProjectAttention,project_degraded=ProjectDegraded,project_unknown=ProjectUnknown,
-            project_health_age_s=ProjectHealthAgeS,
-            group=Group,scope=Scope,account_name=AccountName,
-            request_id=RequestId,rows=Rows},Json.Options);
+        var payload=new Dictionary<string,object?>{
+            ["type"]="opsdeck.inventory.v1",["generation"]=generation,["test"]=test,["slot"]=Slot,["view"]=View,
+            ["requested_page"]=RequestedPage,["page"]=Page,["total_pages"]=TotalPages,["total_rows"]=TotalRows,
+            ["known_resources"]=KnownResources,["complete_sources"]=CompleteSources,["source_count"]=SourceCount,
+            ["state"]=(int)State,["age_s"]=AgeS,["map_ok"]=MapOk,["project_health"]=ProjectHealth,
+            ["project_health_label"]=string.IsNullOrEmpty(ProjectHealthLabel)?null:ProjectHealthLabel,
+            ["group"]=Group,["scope"]=Scope,["account_name"]=AccountName,["request_id"]=RequestId,["rows"]=Rows};
+        if(selectedProject){
+            payload["project_workers"]=ProjectWorkers;payload["project_d1"]=ProjectD1;payload["project_r2"]=ProjectR2;payload["project_pages"]=ProjectPages;
+            payload["project_ok"]=ProjectOk;payload["project_attention"]=ProjectAttention;payload["project_degraded"]=ProjectDegraded;payload["project_unknown"]=ProjectUnknown;
+            payload["project_health_age_s"]=ProjectHealthAgeS;
+        }
+        var text=JsonSerializer.Serialize(payload,Json.Options);
         if(Encoding.UTF8.GetByteCount(text)>3000)throw new InvalidOperationException("Inventory frame exceeds UART budget.");
         return text;
     }

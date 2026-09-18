@@ -27,7 +27,7 @@ checks={
     "parser_state": "project_summary_present" in header and "project_summary_present" in parser,
     "ui_resource_mix": '"W:%d D1:%d R2:%d P:%d | OK:%d ATT:%d DEG:%d UNK:%d"' in ui,
     "ui_age_line": "Health oldest %s | inventory age %s | Pages = NO HEALTH DATA" in ui,
-    "tests_summary": "selected-summary-counts" in tests and "wire-project-summary" in tests,
+    "tests_summary": "selected-summary-counts" in tests and "wire-project-summary" in tests and "wire-project-summary-omitted" in tests,
 }
 passed=sum(checks.values())
 for name,ok in checks.items(): print(("PASS " if ok else "FAIL ")+name)
