@@ -25,16 +25,19 @@ public sealed record PanelInventoryRequest(int Slot=0,int View=0,int Page=0,stri
 public sealed record PanelInventoryRow(string Key,string Label,string Detail,int Health=0);
 public sealed record PanelInventoryPage(int Slot,int View,int RequestedPage,int Page,int TotalPages,int TotalRows,
     int KnownResources,int CompleteSources,int SourceCount,SourceState State,int AgeS,bool MapOk,
-    string Group,string Scope,string AccountName,int RequestId,PanelInventoryRow[] Rows,int ProjectHealth=0)
+    string Group,string Scope,string AccountName,int RequestId,PanelInventoryRow[] Rows,int ProjectHealth=0,string ProjectHealthLabel="")
 {
     public string Wire(string generation,bool test=false)
     {
         if(!Regex.IsMatch(generation,"^[a-f0-9]{8}$"))throw new ArgumentException("Invalid generation.");
         if(ProjectHealth is <0 or >3||Rows.Any(x=>x.Health is <0 or >3))throw new ArgumentException("Invalid project health field.");
+        if(ProjectHealthLabel.Length>20||ProjectHealthLabel.Any(c=>c<32||c>126))throw new ArgumentException("Invalid project health label.");
         var text=JsonSerializer.Serialize(new{type="opsdeck.inventory.v1",generation,test,slot=Slot,view=View,
             requested_page=RequestedPage,page=Page,total_pages=TotalPages,total_rows=TotalRows,
             known_resources=KnownResources,complete_sources=CompleteSources,source_count=SourceCount,
-            state=(int)State,age_s=AgeS,map_ok=MapOk,project_health=ProjectHealth,group=Group,scope=Scope,account_name=AccountName,
+            state=(int)State,age_s=AgeS,map_ok=MapOk,project_health=ProjectHealth,
+            project_health_label=string.IsNullOrEmpty(ProjectHealthLabel)?null:ProjectHealthLabel,
+            group=Group,scope=Scope,account_name=AccountName,
             request_id=RequestId,rows=Rows},Json.Options);
         if(Encoding.UTF8.GetByteCount(text)>3000)throw new InvalidOperationException("Inventory frame exceeds UART budget.");
         return text;
@@ -59,14 +62,14 @@ public static class InventoryPaging
     {
         request.Validate();profile.Validate();
         string accountName=Label(profile.Name,22),scope=request.View==0?"Projects":"All resources";
-        bool mapOk=mappings!=null;int known=-1,complete=0,age=-1,projectHealth=0;SourceState state;
+        bool mapOk=mappings!=null;int known=-1,complete=0,age=-1,projectHealth=0;string projectHealthLabel="";SourceState state;
         var resultRows=new List<PanelInventoryRow>();
         PanelInventoryPage Result()
         {
             int total=resultRows.Count,pages=(total+PageSize-1)/PageSize;
             int page=pages==0?0:Math.Min(request.Page,pages-1);
             return new(request.Slot,request.View,request.Page,page,pages,total,known,complete,4,state,age,mapOk,
-                request.Group,Label(scope),accountName,request.RequestId,resultRows.Skip(page*PageSize).Take(PageSize).ToArray(),projectHealth);
+                request.Group,Label(scope),accountName,request.RequestId,resultRows.Skip(page*PageSize).Take(PageSize).ToArray(),projectHealth,projectHealthLabel);
         }
         if(!profile.Enabled||profile.AccountId.Length==0){state=SourceState.Setup;scope="Connect account in Windows";return Result();}
         var sets=inventory.Sets.Where(s=>string.Equals(s.AccountId,profile.AccountId,StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -105,8 +108,10 @@ public static class InventoryPaging
             {
                 if(healthEvidence==null)resultRows.Add(new(g.Key,Label(g.Project??"Unassigned"),
                     $"{g.Rows.Length} res | W:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.Worker)} D:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.D1)} R:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.R2)} P:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.Pages)}"));
-                else{var health=ProjectHealthEngine.Rollup(profile.AccountId,profile.Name,g.Project,g.Rows.Select(x=>x.Resource.Key),healthEvidence);resultRows.Add(new(g.Key,Label(g.Project??"Unassigned"),
-                    $"{health.Label} | {g.Rows.Length} res | obs {health.EvidenceCount}/{health.Resources} | W:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.Worker)} D:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.D1)} R:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.R2)} P:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.Pages)}",(int)health.Health));}
+                else{var keys=g.Rows.Select(x=>x.Resource.Key).ToArray();var health=ProjectHealthEngine.Rollup(profile.AccountId,profile.Name,g.Project,keys,healthEvidence);
+                    int supported=health.OkCount+health.AttentionCount+health.DegradedCount+health.UnknownCount;string display=ProjectHealthEngine.RollupLabel(keys,healthEvidence);
+                    resultRows.Add(new(g.Key,Label(g.Project??"Unassigned"),
+                    $"{display} | {g.Rows.Length} res | obs {health.EvidenceCount}/{supported} | W:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.Worker)} D:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.D1)} R:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.R2)} P:{g.Rows.Count(x=>x.Resource.Key.Kind==ResourceKind.Pages)}",(int)health.Health));}
             }
         }
         else
@@ -117,14 +122,15 @@ public static class InventoryPaging
                 var group=groups.SingleOrDefault(g=>g.Key==request.Group);
                 if(group==null){scope="Project absent in this snapshot";state=SourceState.NoData;return Result();}
                 selected=group.Rows;scope=group.Project??"Unassigned";
-                if(healthEvidence!=null)projectHealth=(int)ProjectHealthEngine.Rollup(profile.AccountId,profile.Name,group.Project,group.Rows.Select(x=>x.Resource.Key),healthEvidence).Health;
+                if(healthEvidence!=null){var keys=group.Rows.Select(x=>x.Resource.Key).ToArray();projectHealth=(int)ProjectHealthEngine.Rollup(profile.AccountId,profile.Name,group.Project,keys,healthEvidence).Health;projectHealthLabel=ProjectHealthEngine.RollupLabel(keys,healthEvidence);}
             }
             foreach(var row in selected.OrderBy(x=>x.Resource.Key.Kind).ThenBy(x=>x.Resource.Name,StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x=>x.Resource.Key.Scope,StringComparer.Ordinal).ThenBy(x=>x.Resource.Key.Id,StringComparer.Ordinal))
             {
                 string project=mapOk?(row.Project??"Unassigned"):"Map unavailable";
-                int health=healthEvidence!=null&&healthEvidence.TryGetValue(row.Resource.Key,out var healthRow)?(int)healthRow.Health:0;
-                string detail=healthEvidence==null?$"{row.Resource.Key.Kind}/{row.Resource.Key.Scope} | {project}":$"{ProjectHealthEngine.Label((ProjectHealthState)health)} | {row.Resource.Key.Kind}/{row.Resource.Key.Scope} | {project}";
+                ProjectResourceHealth? healthRow=null;if(healthEvidence!=null)healthEvidence.TryGetValue(row.Resource.Key,out healthRow);
+                int health=healthRow==null?0:(int)healthRow.Health;
+                string detail=healthEvidence==null?$"{row.Resource.Key.Kind}/{row.Resource.Key.Scope} | {project}":$"{ProjectHealthEngine.EvidenceLabel(row.Resource.Key,healthRow)} | {row.Resource.Key.Kind}/{row.Resource.Key.Scope} | {project}";
                 resultRows.Add(new(Hash(JsonSerializer.Serialize(row.Resource.Key,Json.Options)),Label(row.Resource.Name),Label(detail,96),health));
             }
         }

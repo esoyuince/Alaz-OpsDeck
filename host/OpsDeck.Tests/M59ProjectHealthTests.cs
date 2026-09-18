@@ -20,12 +20,17 @@ public static class M59ProjectHealthTests
         var ok=new Dictionary<ResourceKey,ProjectResourceHealth>{{wk,E(wk,SourceState.Ok)},{dk,E(dk,SourceState.Ok)}};
         C("rollup-ok",ProjectHealthEngine.Rollup(A,"Other","A",[wk,dk],ok).Health==ProjectHealthState.Ok);
         var unknown=new Dictionary<ResourceKey,ProjectResourceHealth>{{wk,E(wk,SourceState.Ok)}};
-        C("unknown-prevents-ok",ProjectHealthEngine.Rollup(A,"Other","A",[wk,pk],unknown).Health==ProjectHealthState.Unknown);
+        C("pages-excluded-from-rollup",ProjectHealthEngine.Rollup(A,"Other","A",[wk,pk],unknown).Health==ProjectHealthState.Ok);
         var att=new Dictionary<ResourceKey,ProjectResourceHealth>{{wk,E(wk,SourceState.Partial)}};
         C("attention-beats-unknown",ProjectHealthEngine.Rollup(A,"Other","A",[wk,pk],att).Health==ProjectHealthState.Attention);
         var deg=new Dictionary<ResourceKey,ProjectResourceHealth>{{wk,E(wk,SourceState.Error)},{dk,E(dk,SourceState.Partial)}};
         C("degraded-precedence",ProjectHealthEngine.Rollup(A,"Other","A",[wk,dk,pk],deg).Health==ProjectHealthState.Degraded);
         C("evidence-count",ProjectHealthEngine.Rollup(A,"Other","A",[wk,dk,pk],deg).EvidenceCount==2);
+        C("display-pending",ProjectHealthEngine.RollupLabel([wk],new Dictionary<ResourceKey,ProjectResourceHealth>())=="PENDING");
+        C("display-nodata",ProjectHealthEngine.RollupLabel([wk],new Dictionary<ResourceKey,ProjectResourceHealth>{{wk,E(wk,SourceState.NoData)}})=="NO DATA");
+        C("display-stale",ProjectHealthEngine.RollupLabel([wk],new Dictionary<ResourceKey,ProjectResourceHealth>{{wk,E(wk,SourceState.Error,600)}})=="STALE");
+        C("display-error",ProjectHealthEngine.RollupLabel([wk],new Dictionary<ResourceKey,ProjectResourceHealth>{{wk,E(wk,SourceState.Error)}})=="ERROR");
+        C("display-pages",ProjectHealthEngine.RollupLabel([pk],new Dictionary<ResourceKey,ProjectResourceHealth>())=="NO HEALTH DATA");
         CloudResource R(ResourceKey k,string name)=>new(k,name);
         ResourceSet S(ResourceKind k,params CloudResource[] rows)=>new(A,"Other Projects",k,SourceState.Ok,rows,true,now.AddSeconds(-30),"");
         var inv=new ResourceInventory([S(ResourceKind.Worker,R(wk,"API")),S(ResourceKind.D1,R(dk,"DB")),
@@ -34,7 +39,7 @@ public static class M59ProjectHealthTests
         var evidence=new Dictionary<ResourceKey,ProjectResourceHealth>{{wk,E(wk,SourceState.Ok)},{dk,E(dk,SourceState.Partial)},{rk,E(rk,SourceState.Ok)}};
         var summaries=ProjectHealthEngine.Build(inv,map,evidence);
         var pa=summaries.Single(x=>x.Project=="Project A");
-        C("build-project-a",pa.Health==ProjectHealthState.Attention&&pa.Resources==3&&pa.UnknownCount==1);
+        C("build-project-a",pa.Health==ProjectHealthState.Attention&&pa.Resources==3&&pa.UnknownCount==0);
         C("build-project-b",summaries.Single(x=>x.Project=="Project B").Health==ProjectHealthState.Ok);
         C("map-unavailable",ProjectHealthEngine.Build(inv,null,evidence).Length==0);
         var profile=new CloudAccountConfig{ProfileId="other",Name="Other Projects",AccountId=A,Enabled=true};
@@ -44,8 +49,8 @@ public static class M59ProjectHealthTests
         var projectA=projects.Rows.Single(x=>x.Label=="Project A");
         C("project-row-health",projectA.Health==(int)ProjectHealthState.Attention&&projectA.Detail.StartsWith("ATTENTION |"));
         var selected=InventoryPaging.Build(inv,map,profile,new(0,1,0,projectA.Key,3),now,evidence);
-        C("selected-health",selected.ProjectHealth==(int)ProjectHealthState.Attention&&selected.Rows.Length==3);
-        C("pages-unknown",selected.Rows.Single(x=>x.Label=="Site").Health==(int)ProjectHealthState.Unknown);
+        C("selected-health",selected.ProjectHealth==(int)ProjectHealthState.Attention&&selected.ProjectHealthLabel=="ATTENTION"&&selected.Rows.Length==3);
+        C("pages-no-health-data",selected.Rows.Single(x=>x.Label=="Site").Health==(int)ProjectHealthState.Unknown&&selected.Rows.Single(x=>x.Label=="Site").Detail.StartsWith("NO HEALTH DATA |"));
         var all=InventoryPaging.Build(inv,map,profile,new(0,1,0,"all",4),now,evidence);
         C("resource-health",all.Rows.Single(x=>x.Label=="Files").Health==(int)ProjectHealthState.Ok&&all.Rows.Single(x=>x.Label=="Files").Detail.StartsWith("OK |"));
         string wire=projects.Wire("1234abcd");using var doc=JsonDocument.Parse(wire);

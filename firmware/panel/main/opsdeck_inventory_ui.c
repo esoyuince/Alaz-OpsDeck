@@ -52,8 +52,9 @@ static void turn_page(lv_event_t *e)
 {
     opsdeck_inventory_t s;opsdeck_inventory_query_t q;opsdeck_inventory_copy(&s,&q);
     if(!s.present)return;
-    int page=s.page+((uintptr_t)lv_event_get_user_data(e)?1:-1);
-    if(page<0||page>=s.total_pages)return;
+    if(s.total_pages<=0)return;
+    bool forward=(uintptr_t)lv_event_get_user_data(e)!=0;
+    int page=forward?(s.page+1>=s.total_pages?0:s.page+1):(s.page<=0?s.total_pages-1:s.page-1);
     opsdeck_inventory_select(q.slot,q.view,page,q.group);
 }
 static void open_project(lv_event_t *e)
@@ -109,7 +110,7 @@ void opsdeck_inventory_ui_refresh(int64_t now)
     int64_t transit=s.present?(now-s.received_us)/1000000:0;
     bool stale=s.present&&(transit>=16||(s.age_s>=0&&(int64_t)s.age_s+transit>OPSDECK_INVENTORY_TTL));
     int state=stale?3:s.state;
-    if(s.present&&q.view==1&&strcmp(q.group,"all")&&s.project_health_present)snprintf(b,sizeof(b),"%sPROJECT: %s | HEALTH %s | %s",s.test?"TEST DATA / ":"",s.scope,healths[s.project_health],states[state]);
+    if(s.present&&q.view==1&&strcmp(q.group,"all")&&s.project_health_present)snprintf(b,sizeof(b),"%sPROJECT: %s | HEALTH %s | %s",s.test?"TEST DATA / ":"",s.scope,s.project_health_label[0]?s.project_health_label:healths[s.project_health],states[state]);
     else if(s.present&&q.view==1&&strcmp(q.group,"all"))snprintf(b,sizeof(b),"%sPROJECT: %s | %s",s.test?"TEST DATA / ":"",s.scope,states[state]);
     else snprintf(b,sizeof(b),"%s%s | %s",s.present&&s.test?"TEST DATA / ":"",s.present?s.scope:"Waiting for host",s.present?states[state]:"WAIT");
     lv_label_set_text(title,b);lv_obj_set_style_text_color(title,color(s.test?0xFF9977:stale?MUTED:INK),0);
@@ -120,7 +121,7 @@ void opsdeck_inventory_ui_refresh(int64_t now)
     else if(strcmp(q.group,"all"))snprintf(b,sizeof(b),"%s | %s%d project resources | %d/4 account lists | age %s",s.account_name,lower,s.total_rows,s.complete_sources,age);
     else snprintf(b,sizeof(b),"%s | %s%d resources | %d/4 lists | age %s",s.account_name,lower,s.total_rows,s.complete_sources,age);
     lv_label_set_text(coverage,b);lv_obj_set_style_text_color(coverage,color(stale?MUTED:INK),0);
-    lv_label_set_text(footer,q.view==0?"Health = attributed Worker/D1/R2 evidence | Pages/shared scope UNKNOWN":strcmp(q.group,"all")?"Project health excludes account/shared signals | UNKNOWN means insufficient evidence":"Resource health is cache evidence only | no account/shared attribution");
+    lv_label_set_text(footer,q.view==0?"Health: OK/PENDING/NO DATA/STALE/ATTENTION/ERROR | Pages = NO HEALTH DATA":strcmp(q.group,"all")?"Project health uses Worker/D1/R2 only | Pages = NO HEALTH DATA":"Resource health: PENDING/NO DATA/STALE/ATTENTION/ERROR/OK");
     for(int i=0;i<4;i++){
         bool visible=s.present&&i<s.row_count;
         if(visible){
@@ -139,6 +140,6 @@ void opsdeck_inventory_ui_refresh(int64_t now)
     }
     snprintf(b,sizeof(b),s.present&&s.total_pages>0?"Page %d / %d  |  %d %s":"-- / --",s.page+1,s.total_pages,s.total_rows,q.view?"resources":(s.total_rows==1?"group":"groups"));
     lv_label_set_text(page_text,b);
-    if(!s.present||s.page<=0)lv_obj_add_state(prev,LV_STATE_DISABLED);else lv_obj_remove_state(prev,LV_STATE_DISABLED);
-    if(!s.present||s.page+1>=s.total_pages)lv_obj_add_state(next,LV_STATE_DISABLED);else lv_obj_remove_state(next,LV_STATE_DISABLED);
+    if(!s.present||s.total_pages<=0){lv_obj_add_state(prev,LV_STATE_DISABLED);lv_obj_add_state(next,LV_STATE_DISABLED);}
+    else{lv_obj_remove_state(prev,LV_STATE_DISABLED);lv_obj_remove_state(next,LV_STATE_DISABLED);}
 }

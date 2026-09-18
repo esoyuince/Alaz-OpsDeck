@@ -11,7 +11,7 @@ typedef struct {
     bool present,test,map_ok,project_health_present;
     int slot,view,requested_page,page,total_pages,total_rows,known_resources;
     int complete_sources,source_count,state,age_s,request_id,row_count,project_health;
-    char generation[9],group[17],scope[49],account_name[23];
+    char generation[9],group[17],scope[49],account_name[23],project_health_label[21];
     opsdeck_inventory_row_t rows[OPSDECK_INVENTORY_ROWS];
     int64_t received_us;uint32_t sequence;
 } opsdeck_inventory_t;

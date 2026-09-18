@@ -67,6 +67,12 @@ bool opsdeck_inventory_accept(const cJSON *o)
        !integer(o,"age_s",-1,INT_MAX,&s.age_s)||!integer(o,"request_id",1,INT_MAX,&s.request_id))return false;
     const cJSON *project_health=cJSON_GetObjectItemCaseSensitive(o,"project_health");
     if(project_health){s.project_health_present=true;if(!integer(o,"project_health",0,3,&s.project_health))return false;}
+    const cJSON *project_health_label=cJSON_GetObjectItemCaseSensitive(o,"project_health_label");
+    if(cJSON_IsString(project_health_label)){
+        size_t n=strlen(project_health_label->valuestring);if(n==0||n>=sizeof(s.project_health_label))return false;
+        for(size_t i=0;i<n;i++)if((unsigned char)project_health_label->valuestring[i]<32||(unsigned char)project_health_label->valuestring[i]>126)return false;
+        memcpy(s.project_health_label,project_health_label->valuestring,n+1);
+    }else if(project_health_label&&!cJSON_IsNull(project_health_label))return false;
     if(!ascii(o,"generation",s.generation,sizeof(s.generation))||!hex(s.generation,8)||
        !ascii(o,"group",s.group,sizeof(s.group))||!group_valid(s.group)||
        !ascii(o,"scope",s.scope,sizeof(s.scope))||!ascii(o,"account_name",s.account_name,sizeof(s.account_name)))return false;

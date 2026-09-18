@@ -12,7 +12,7 @@ public sealed class MainForm : Form
     private readonly Button configure=new(){Text="Bilgisayar / İki Cloudflare hesabı",AutoSize=true};private bool exiting,sessionLocked;
     public MainForm(LocalSettings settings,bool startInTray=false)
     {
-        this.settings=settings;Text="ALAZ OPSDECK — M6.13-A / EdgeNode Read-Only";ClientSize=new Size(1280,780);MinimumSize=new Size(1040,660);StartPosition=FormStartPosition.CenterScreen;
+        this.settings=settings;Text="ALAZ OPSDECK — M6.13-B / EdgeNode + Health UX";ClientSize=new Size(1280,780);MinimumSize=new Size(1040,660);StartPosition=FormStartPosition.CenterScreen;
         OpsDeckTheme.Apply(this);if(startInTray){WindowState=FormWindowState.Minimized;ShowInTaskbar=false;}
         grid.Columns.Add("source","KAYNAK");grid.Columns.Add("state","DURUM");grid.Columns.Add("value","ÖLÇÜM");grid.Columns.Add("detail","AYRINTI / VERİ YAŞI");
         grid.Columns[0].Width=190;grid.Columns[1].Width=115;grid.Columns[2].Width=190;grid.Columns[3].AutoSizeMode=DataGridViewAutoSizeColumnMode.Fill;grid.DefaultCellStyle.WrapMode=DataGridViewTriState.True;OpsDeckTheme.StyleGrid(grid);
