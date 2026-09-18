@@ -18,7 +18,7 @@ public static class Freshness
         if(ageMatters&&metric.UsageCharges&&!metric.LastRead){
             if(!IsCurrent(metric.CollectedAt,now,ttl))return SourceState.Stale;
             if(metric.SourceEnd.HasValue&&!IsCurrent(metric.SourceEnd,now,MetricPresentation.UsageSourceTtl))return SourceState.Stale;
-            if(!metric.SourceEnd.HasValue||!metric.PeriodStart.HasValue||!metric.PeriodEnd.HasValue||metric.PeriodEnd<=metric.PeriodStart)return SourceState.Partial;
+            if(!metric.SourceEnd.HasValue||!metric.PeriodStart.HasValue||(metric.PeriodEnd.HasValue&&metric.PeriodEnd<=metric.PeriodStart))return SourceState.Partial;
         }
         return ageMatters && !IsCurrent(metric.CollectedAt, now, ttl)
             ? SourceState.Stale : metric.State;

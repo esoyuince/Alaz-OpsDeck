@@ -22,10 +22,12 @@ public sealed class SettingsForm : Form
         Add(general,ref row,"Sensörler",new Label{AutoSize=true,Text="Intel ve NVIDIA kullanımı WDDM üzerinden ayrı okunur.\nCPU, chassis ve NVIDIA sıcaklığı ile fan RPM ayrı gösterilir.\nFan kontrolü, driver kurulumu ve otomatik yönetici yükseltmesi yok."});
         foreach(var profile in original.EffectiveAccounts()){
             var e=new ProfileEditor(profile);editors.Add(e);var table=Table(profile.Name);int r=0;
-            Add(table,ref r,"Profil adı",e.Name);Add(table,ref r,"Bağlantı",e.Enabled);Add(table,ref r,"Account ID",e.Account);Add(table,ref r,"API token",e.Token);Add(table,ref r,"Token durumu",e.TokenState);Add(table,ref r,"",e.Remove);Add(table,ref r,"Maliyet",e.Billing);Add(table,ref r,"Sabit USD / ay",e.Monthly);
-            Add(table,ref r,"Ücret kaynağı",new Label{AutoSize=true,Text="Boş: sabit ücret tanımlanmamış. API okunamazsa bu yerel tutar korunur.\nAPI aktif aylık Workers aboneliğini doğrularsa onun tutarı kullanılır; iki kez eklenmez."});Add(table,ref r,"Bu hesabın siteleri",e.Sites);
-            Add(table,ref r,"Güvenlik",new Label{AutoSize=true,Text="Her hesap için ayrı salt-okunur token. Buraya gir; sohbete gönderme.\nBoş token alanı o Account ID'nin kayıtlı anahtarını korur.\nAccount ID değişirse eski hesabın anahtarı yeni hesaba taşınmaz.\nBu ekran Cloudflare kaynaklarını silmez veya değiştirmez."});
-            void TokenHint(){e.TokenState.Text=System.Text.RegularExpressions.Regex.IsMatch(e.Account.Text.Trim(),"^[a-fA-F0-9]{32}$")&&settings.HasTokenForAccount(e.Account.Text.Trim())?"Bu hesap için anahtar kayıtlı (Windows DPAPI).":"Bu hesap için kayıtlı anahtar yok.";}
+            Add(table,ref r,"Profil adı",e.Name);Add(table,ref r,"Bağlantı",e.Enabled);Add(table,ref r,"Account ID",e.Account);Add(table,ref r,"API token",e.Token);Add(table,ref r,"Token durumu",e.TokenState);Add(table,ref r,"",e.Remove);
+            Add(table,ref r,"Billing API token",e.BillingToken);Add(table,ref r,"Billing token durumu",e.BillingTokenState);Add(table,ref r,"",e.RemoveBillingToken);
+            Add(table,ref r,"Maliyet",e.Billing);Add(table,ref r,"Sabit USD / ay",e.Monthly);
+            Add(table,ref r,"Ücret kaynağı",new Label{AutoSize=true,Text="Billing token varsa yalnız Billable Usage + Subscriptions için kullanılır.\nBoşsa geriye dönük uyumluluk için ana API tokenı denenir.\nAPI aktif aylık Workers aboneliğini doğrularsa yerel sabit tutarla iki kez eklenmez."});Add(table,ref r,"Bu hesabın siteleri",e.Sites);
+            Add(table,ref r,"Güvenlik",new Label{AutoSize=true,Text="Ana token ve isteğe bağlı Billing token ayrı DPAPI dosyalarında tutulur.\nBilling token için yalnız Account > Billing > Read yeterlidir.\nBoş alan kayıtlı anahtarı korur; tokenları sohbete veya loga gönderme.\nBu ekran Cloudflare kaynaklarını silmez veya değiştirmez."});
+            void TokenHint(){bool idOk=System.Text.RegularExpressions.Regex.IsMatch(e.Account.Text.Trim(),"^[a-fA-F0-9]{32}$");e.TokenState.Text=idOk&&settings.HasTokenForAccount(e.Account.Text.Trim())?"Ana token kayıtlı (Windows DPAPI).":"Ana token kayıtlı değil.";e.BillingTokenState.Text=idOk&&settings.HasBillingTokenForAccount(e.Account.Text.Trim())?"Ayrı Billing token kayıtlı (Windows DPAPI).":"Ayrı Billing token yok; Billing açıksa ana token fallback olarak kullanılır.";}
             e.Account.TextChanged+=(_,_)=>TokenHint();TokenHint();
         }
         var footer=new FlowLayoutPanel{Dock=DockStyle.Bottom,Height=50,Padding=new Padding(8)};
@@ -41,15 +43,19 @@ public sealed class SettingsForm : Form
             var accounts=editors.Select(e=>e.Original with{FixedMonthlyUsd=Monthly(e),Name=e.Name.Text.Trim(),AccountId=e.Account.Text.Trim().ToLowerInvariant(),Enabled=e.Enabled.Checked,BillingEnabled=e.Billing.Checked,Sites=Lines(e.Sites)}).ToArray();
             var config=original with{SchemaVersion=3,Port=port.Text.Trim().ToUpperInvariant(),NetworkInterface=nic.Text.Trim(),BridgeHealthUrl=bridge.Text.Trim(),BridgeTaskDatabasePath=bridgeTasks.Text.Trim(),EdgeNodeEnabled=edgeNode.Checked,EdgeNodeStatusUrl=edgeNodeUrl.Text.Trim(),DetailedNvidiaSensors=nvidia.Checked,Accounts=accounts,CloudflareAccountId="",CloudflareEnabled=false,BillingEnabled=false,Sites=Lines(sites)};config.Validate();
             for(int i=0;i<editors.Count;i++){
-                var e=editors[i];var a=accounts[i];string token=e.Token.Text.Trim();
+                var e=editors[i];var a=accounts[i];string token=e.Token.Text.Trim(),billingToken=e.BillingToken.Text.Trim();
                 if(token.Length>0){LocalSettings.ValidateToken(token);if(a.AccountId.Length==0)throw new ArgumentException("Token için Account ID gerekli.");}
-                if(e.Remove.Checked&&token.Length>0)throw new ArgumentException("Aynı anda token silme ve değiştirme seçilemez.");
-                if(a.Enabled&&token.Length==0&&(e.Remove.Checked||!settings.HasTokenForAccount(a.AccountId)))throw new ArgumentException(a.Name+": token gir veya bağlantıyı kapat.");
+                if(billingToken.Length>0){LocalSettings.ValidateToken(billingToken);if(a.AccountId.Length==0)throw new ArgumentException("Billing token için Account ID gerekli.");}
+                if(e.Remove.Checked&&token.Length>0)throw new ArgumentException("Aynı anda ana token silme ve değiştirme seçilemez.");
+                if(e.RemoveBillingToken.Checked&&billingToken.Length>0)throw new ArgumentException("Aynı anda Billing token silme ve değiştirme seçilemez.");
+                if(a.Enabled&&token.Length==0&&(e.Remove.Checked||!settings.HasTokenForAccount(a.AccountId)))throw new ArgumentException(a.Name+": ana token gir veya bağlantıyı kapat.");
             }
             for(int i=0;i<editors.Count;i++){
-                var e=editors[i];string id=accounts[i].AccountId,token=e.Token.Text.Trim();if(e.Remove.Checked&&id.Length>0)settings.DeleteTokenForAccount(id);if(token.Length>0)settings.SaveTokenForAccount(id,token);
+                var e=editors[i];string id=accounts[i].AccountId,token=e.Token.Text.Trim(),billingToken=e.BillingToken.Text.Trim();
+                if(e.Remove.Checked&&id.Length>0)settings.DeleteTokenForAccount(id);if(token.Length>0)settings.SaveTokenForAccount(id,token);
+                if(e.RemoveBillingToken.Checked&&id.Length>0)settings.DeleteBillingTokenForAccount(id);if(billingToken.Length>0)settings.SaveBillingTokenForAccount(id,billingToken);
             }
-            settings.Save(config);foreach(var e in editors)e.Token.Clear();
+            settings.Save(config);foreach(var e in editors){e.Token.Clear();e.BillingToken.Clear();}
             try{AutoStartManager.SetEnabled(autostart.Checked);}
             catch(Exception e)when(e is IOException or UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException or ArgumentException){MessageBox.Show(this,"Diğer ayarlar kaydedildi ancak Windows otomatik başlatma kaydı değiştirilemedi: "+e.Message,"ALAZ OPSDECK — Başlangıç");return;}
             DialogResult=DialogResult.OK;Close();
@@ -60,8 +66,9 @@ public sealed class SettingsForm : Form
     {
         public CloudAccountConfig Original{get;}
         public TextBox Monthly=new(){PlaceholderText="Örn. "+5m.ToString("0.00",System.Globalization.CultureInfo.CurrentCulture)};
-        public TextBox Name=new(),Account=new(),Token=new(){UseSystemPasswordChar=true},Sites=new(){Multiline=true,Height=90,ScrollBars=ScrollBars.Vertical};
-        public CheckBox Enabled=new(){Text="Bu hesabı salt-okunur izle",AutoSize=true},Billing=new(){Text="Billable Usage sorgula (ayrı yetki gerekebilir)",AutoSize=true},Remove=new(){Text="Bu hesaba ait kayıtlı tokenı kaldır",AutoSize=true};public Label TokenState=new(){AutoSize=true};
+        public TextBox Name=new(),Account=new(),Token=new(){UseSystemPasswordChar=true},BillingToken=new(){UseSystemPasswordChar=true},Sites=new(){Multiline=true,Height=90,ScrollBars=ScrollBars.Vertical};
+        public CheckBox Enabled=new(){Text="Bu hesabı salt-okunur izle",AutoSize=true},Billing=new(){Text="Billable Usage + Subscriptions sorgula",AutoSize=true},Remove=new(){Text="Bu hesaba ait ana tokenı kaldır",AutoSize=true},RemoveBillingToken=new(){Text="Bu hesaba ait ayrı Billing tokenı kaldır",AutoSize=true};
+        public Label TokenState=new(){AutoSize=true},BillingTokenState=new(){AutoSize=true};
         public ProfileEditor(CloudAccountConfig p){Original=p;Monthly.Text=p.FixedMonthlyUsd?.ToString(System.Globalization.CultureInfo.CurrentCulture)??"";Name.Text=p.Name;Account.Text=p.AccountId;Enabled.Checked=p.Enabled;Billing.Checked=p.BillingEnabled;Sites.Text=string.Join(Environment.NewLine,p.Sites);}
     }
 }

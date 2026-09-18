@@ -28,10 +28,20 @@ public sealed class LocalSettings
         if(!Regex.IsMatch(account,"^[a-fA-F0-9]{32}$"))throw new ArgumentException("Invalid account ID for secret storage.");
         return Path.Combine(DirectoryPath,"cloudflare-"+account.ToLowerInvariant()+".dpapi");
     }
+    private string AccountBillingSecretPath(string account)
+    {
+        if(!Regex.IsMatch(account,"^[a-fA-F0-9]{32}$"))throw new ArgumentException("Invalid account ID for billing secret storage.");
+        return Path.Combine(DirectoryPath,"cloudflare-billing-"+account.ToLowerInvariant()+".dpapi");
+    }
     public bool HasTokenForAccount(string account)=>account.Length>0&&File.Exists(AccountSecretPath(account));
     public string? ReadTokenForAccount(string account)=>ReadSecret(AccountSecretPath(account));
     public void SaveTokenForAccount(string account,string token)=>WriteSecret(AccountSecretPath(account),token);
     public void DeleteTokenForAccount(string account){string path=AccountSecretPath(account);if(File.Exists(path))File.Delete(path);}
+    public bool HasBillingTokenForAccount(string account)=>account.Length>0&&File.Exists(AccountBillingSecretPath(account));
+    public string? ReadBillingTokenForAccount(string account)=>ReadSecret(AccountBillingSecretPath(account));
+    public string? ReadBillingTokenForAccountOrPrimary(string account)=>ReadBillingTokenForAccount(account)??ReadTokenForAccount(account);
+    public void SaveBillingTokenForAccount(string account,string token)=>WriteSecret(AccountBillingSecretPath(account),token);
+    public void DeleteBillingTokenForAccount(string account){string path=AccountBillingSecretPath(account);if(File.Exists(path))File.Delete(path);}
     public bool HasToken=>File.Exists(SecretPath);
     public string? ReadToken()=>ReadSecret(SecretPath);
     public void SaveToken(string token)=>WriteSecret(SecretPath,token);

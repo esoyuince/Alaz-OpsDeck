@@ -72,13 +72,15 @@ internal static class M44TelemetryTests
         check("m44-billing-source-age-expired",Freshness.MetricState(money with{SourceEnd=now.AddHours(-48).AddSeconds(-1)},now,7200)==SourceState.Stale);
         check("m44-billing-future-source-not-current",Freshness.MetricState(money with{SourceEnd=now.AddMinutes(1)},now,7200)==SourceState.Stale);
         check("m44-billing-missing-source-not-green",Freshness.MetricState(money with{SourceEnd=null},now,7200)==SourceState.Partial);
-        check("m44-billing-missing-period-not-green",Freshness.MetricState(money with{PeriodEnd=null},now,7200)==SourceState.Partial);
+        check("m44-billing-missing-period-not-green",Freshness.MetricState(money with{PeriodStart=null,PeriodEnd=null},now,7200)==SourceState.Partial);
+        check("m44-billing-v1-no-period-end-green",Freshness.MetricState(money with{PeriodEnd=null},now,7200)==SourceState.Ok);
         check("m44-billing-inverted-period-not-green",Freshness.MetricState(money with{PeriodEnd=start},now,7200)==SourceState.Partial);
         check("m44-billing-denied-retains-cause",Freshness.MetricState(money.Failed(SourceState.Denied,"denied"),now,7200)==SourceState.Denied);
         check("m44-billing-note-does-not-hide-denied",MetricPresentation.Note(money.Failed(SourceState.Denied,"denied"),now,7200)=="PERMISSION DENIED");
         check("m44-billing-note-does-not-hide-error",MetricPresentation.Note(money.Failed(SourceState.Error,"failed"),now,7200)=="API ERROR");
         check("m44-billing-source-reason",MetricPresentation.Note(money with{SourceEnd=now.AddDays(-32)},now,7200)=="SOURCE STALE");
-        check("m44-billing-period-reason",MetricPresentation.Note(money with{PeriodEnd=null},now,7200)=="PERIOD UNKNOWN");
+        check("m44-billing-period-reason",MetricPresentation.Note(money with{PeriodStart=null,PeriodEnd=null},now,7200)=="PERIOD UNKNOWN");
+        check("m44-billing-v1-no-end-note",MetricPresentation.Note(money with{PeriodEnd=null,Note="CURRENT PERIOD / USAGE"},now,7200)=="CURRENT PERIOD / USAGE");
         var p1=new CloudAccountConfig{ProfileId="a",Name="A",AccountId=new string('1',32),Enabled=true};
         var p2=p1 with{ProfileId="b",Name="B",AccountId=new string('2',32)};
         var a=AccountState.Empty(p1) with{Cost=Cost(.45)};var b=AccountState.Empty(p2) with{Cost=Cost(.05)};
@@ -88,8 +90,11 @@ internal static class M44TelemetryTests
         check("m44-billing-no-mixed-period",Total(a,b with{Cost=b.Cost with{PeriodStart=start.AddDays(-1)}}).Value==null);
         check("m44-billing-different-source-cutoff-withheld",Total(a,b with{Cost=b.Cost with{SourceEnd=now.AddHours(-2)}}).Value==null);
         check("m44-billing-mixed-source-kind-withheld",Total(a,b with{Cost=b.Cost with{UsageCharges=false}}).Value==null);
+        var v1Comparable=Total(a with{Cost=a.Cost with{PeriodEnd=null}},b with{Cost=b.Cost with{PeriodEnd=null}});
+        check("m44-billing-v1-no-end-comparable",v1Comparable.State==SourceState.Ok&&v1Comparable.Value==.5);
+        check("m44-billing-mixed-end-presence-withheld",Total(a,b with{Cost=b.Cost with{PeriodEnd=null}}).Value==null);
         var incomplete=Total(a with{Cost=a.Cost with{SourceEnd=now.AddDays(-32)}},b with{Cost=b.Cost with{PeriodEnd=null}});
-        check("m44-billing-real-shape-no-total",incomplete.Value==null&&incomplete.State==SourceState.Partial&&incomplete.Note=="SOURCE / PERIOD");
+        check("m44-billing-v1-no-end-known-subtotal",incomplete.Value==.05&&incomplete.State==SourceState.Partial&&incomplete.Note=="KNOWN SUBTOTAL");
         var sub=Total(a,b with{Cost=b.Cost with{SourceEnd=now.AddDays(-32)}});
         check("m44-billing-stale-excluded-subtotal-explicit",sub.Value==.45&&sub.State==SourceState.Partial&&sub.Note=="KNOWN SUBTOTAL");
         using(var doc=JsonDocument.Parse(JsonSerializer.Serialize((money with{SourceEnd=now.AddDays(-32)}).Wire(now,7200),Json.Options))){

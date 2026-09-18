@@ -37,7 +37,7 @@ public static class AccountAggregate
         var available=accounts.Select(select).Where(m=>Freshness.MetricState(m,now,ttl)==SourceState.Ok&&m.Value.HasValue&&double.IsFinite(m.Value.Value)&&Freshness.IsCurrent(m.CollectedAt,now,ttl)).ToArray();
         if(available.Length==0)return new(SourceState.Partial,Detail:cost?"Toplam yok: kaynak tarihi eski/bilinmiyor veya hesap dönemleri eksik. Hesapların son kayıtlarını ayrı inceleyin.":$"0/{accounts.Length} accounts available",Covered:0,Expected:accounts.Length,Note:cost?"SOURCE / PERIOD":"NO ACCOUNTS");
         bool sameUnit=available.Select(m=>m.Unit).Distinct(StringComparer.Ordinal).Count()==1;
-        bool samePeriod=!cost||available.All(m=>m.PeriodStart.HasValue&&m.PeriodEnd.HasValue)&&available.Select(m=>(m.PeriodStart,m.PeriodEnd)).Distinct().Count()==1;
+        bool samePeriod=!cost||available.All(m=>m.PeriodStart.HasValue)&&available.Select(m=>m.PeriodStart).Distinct().Count()==1&&((available.All(m=>!m.PeriodEnd.HasValue))||(available.All(m=>m.PeriodEnd.HasValue)&&available.Select(m=>m.PeriodEnd).Distinct().Count()==1));
         bool sameScope=!cost||(available.Select(m=>m.UsageCharges).Distinct().Count()==1&&
             (!available[0].UsageCharges||available.All(m=>m.SourceEnd.HasValue)&&available.Select(m=>m.SourceEnd).Distinct().Count()==1));
         if(!sameScope)return new(SourceState.Partial,Detail:"Usage scope or source cutoff differs; total withheld",Covered:available.Length,Expected:accounts.Length,Note:"SCOPE / SOURCE END");

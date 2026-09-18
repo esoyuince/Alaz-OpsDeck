@@ -232,14 +232,21 @@ public sealed partial class AppEngine : IAsyncDisposable
             try{token=settings.ReadTokenForAccount(profile.AccountId);}
             catch(Exception e)when(e is System.Security.Cryptography.CryptographicException or IOException or UnauthorizedAccessException){UpdateAccount(si,a=>a with{Workers=a.Workers.Failed(SourceState.Error,"Token unavailable"),D1=a.D1.Failed(SourceState.Error,"Token unavailable"),R2=a.R2.Failed(SourceState.Error,"Token unavailable"),Cost=a.Cost.Failed(SourceState.Error,"Token unavailable")});}
             if(string.IsNullOrEmpty(token)){UpdateAccount(si,a=>a with{Workers=a.Workers.Failed(SourceState.Error,"Token unavailable"),D1=a.D1.Failed(SourceState.Error,"Token unavailable"),R2=a.R2.Failed(SourceState.Error,"Token unavailable"),Cost=a.Cost.Failed(SourceState.Error,"Token unavailable")});continue;}
+            string? billingToken=token;
+            if(profile.BillingEnabled)try{billingToken=settings.ReadBillingTokenForAccountOrPrimary(profile.AccountId);}
+            catch(Exception e)when(e is System.Security.Cryptography.CryptographicException or IOException or UnauthorizedAccessException)
+            {
+                billingToken=null;UpdateAccount(si,a=>a with{Cost=a.Cost.Failed(SourceState.Error,"Billing token unavailable"),Subscription=(a.Subscription??Metric.Setup()).Failed(SourceState.Error,"Billing token unavailable")});
+            }
             var cf=new CloudflareClient(profile.AccountId,token);
+            var billingCf=profile.BillingEnabled&&!string.IsNullOrEmpty(billingToken)?new CloudflareClient(profile.AccountId,billingToken):null;
             tasks.Add(Task.Run(async()=>{
                 try{await Task.WhenAll(Poll(cf.Workers,m=>UpdateAccount(si,a=>a with{Workers=m}),()=>Accounts[si].Workers,60),
                     Poll(cf.D1,m=>UpdateAccount(si,a=>a with{D1=m}),()=>Accounts[si].D1,60),
                     Poll(cf.R2,m=>UpdateAccount(si,a=>a with{R2=m}),()=>Accounts[si].R2,300),
-                    profile.BillingEnabled?Poll(cf.Cost,m=>PutCost(si,m),()=>Accounts[si].Cost,3600):Task.CompletedTask,
-                    profile.BillingEnabled?Poll(cf.WorkersSubscription,m=>UpdateAccount(si,a=>a with{Subscription=m}),()=>Accounts[si].Subscription??Metric.Setup(),3600):Task.CompletedTask);}
-                finally{cf.Dispose();}
+                    profile.BillingEnabled&&billingCf!=null?Poll(billingCf.Cost,m=>PutCost(si,m),()=>Accounts[si].Cost,3600):Task.CompletedTask,
+                    profile.BillingEnabled&&billingCf!=null?Poll(billingCf.WorkersSubscription,m=>UpdateAccount(si,a=>a with{Subscription=m}),()=>Accounts[si].Subscription??Metric.Setup(),3600):Task.CompletedTask);}
+                finally{cf.Dispose();billingCf?.Dispose();}
             }));
         }
         log.Event("host_started",new{version="M6.17-B",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});

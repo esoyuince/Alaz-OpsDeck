@@ -59,9 +59,14 @@ internal static class M3Tests
         try{
             var st=new LocalSettings(temp);st.SaveTokenForAccount(aId,"test-account-a-not-real-1234");st.SaveTokenForAccount(bId,"test-account-b-not-real-1234");
             Check("m3-token-a-isolated",st.ReadTokenForAccount(aId)=="test-account-a-not-real-1234");Check("m3-token-b-isolated",st.ReadTokenForAccount(bId)=="test-account-b-not-real-1234");
+            Check("m3-billing-fallback-primary",st.ReadBillingTokenForAccountOrPrimary(aId)=="test-account-a-not-real-1234");
+            st.SaveBillingTokenForAccount(aId,"test-billing-a-not-real-5678");
+            Check("m3-billing-token-dedicated",st.ReadBillingTokenForAccount(aId)=="test-billing-a-not-real-5678"&&st.ReadBillingTokenForAccountOrPrimary(aId)=="test-billing-a-not-real-5678");
+            Check("m3-billing-token-separate-file",st.HasBillingTokenForAccount(aId)&&st.ReadTokenForAccount(aId)=="test-account-a-not-real-1234"&&!st.HasBillingTokenForAccount(bId));
             st.Save(new HostConfig{Accounts=[p1,p2]});Check("m3-tokens-not-config",!File.ReadAllText(st.ConfigPath).Contains("not-real"));
+            st.DeleteBillingTokenForAccount(aId);Check("m3-billing-delete-fallback",!st.HasBillingTokenForAccount(aId)&&st.ReadBillingTokenForAccountOrPrimary(aId)=="test-account-a-not-real-1234");
             st.DeleteTokenForAccount(aId);Check("m3-remove-one-preserves-other",!st.HasTokenForAccount(aId)&&st.HasTokenForAccount(bId));
-            Throws("m3-secret-id-path-blocked",()=>st.ReadTokenForAccount("../x"));
+            Throws("m3-secret-id-path-blocked",()=>st.ReadTokenForAccount("../x"));Throws("m3-billing-secret-id-path-blocked",()=>st.ReadBillingTokenForAccount("../x"));
             var legacy=new LocalSettings(Path.Combine(temp,"legacy"));legacy.SaveToken("legacy-test-not-real-987654");legacy.Save(new HostConfig{CloudflareAccountId=aId,CloudflareEnabled=true});
             var c=legacy.Load();Check("m3-legacy-config-migration",c.Accounts[0].AccountId==aId&&c.Accounts[0].Enabled&&!c.CloudflareEnabled&&c.SchemaVersion==3);
             Check("m3-legacy-secret-preserved",legacy.ReadTokenForAccount(aId)=="legacy-test-not-real-987654"&&legacy.HasToken);

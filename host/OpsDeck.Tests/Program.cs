@@ -90,10 +90,17 @@ Check("r2-gib",CloudflareClient.ParseR2(Parse(R2(1073741824))).Value==1);
 Check("empty-r2-no-data",CloudflareClient.ParseR2(Parse("{\"result\":{}}" )).State==SourceState.NoData);
 Check("zero-r2-valid",CloudflareClient.ParseR2(Parse(R2(0))).Value==0);
 Throws("negative-r2-rejected",()=>CloudflareClient.ParseR2(Parse(R2(-1))));
-string Charge(string date,string currency="USD",string cost="0.75")=>"{\"BillingAccountId\":\""+account+"\",\"ChargeCategory\":\"Usage\",\"BillingCurrency\":\""+currency+"\",\"ServiceName\":\"Workers\",\"BillingPeriodStart\":\"2026-09-01T00:00:00Z\",\"ChargePeriodStart\":\""+date+"\",\"ChargePeriodEnd\":\""+date+"\",\"PricingUnit\":\"requests\",\"ContractedCost\":"+cost+",\"CumulatedContractedCost\":999}";
+string Charge(string date,string currency="USD",string cost="0.75",string period="2026-09-01T00:00:00Z")=>"{\"BillingAccountId\":\""+account+"\",\"ChargeCategory\":\"Usage\",\"BillingCurrency\":\""+currency+"\",\"ServiceName\":\"Workers\",\"BillingPeriodStart\":\""+period+"\",\"ChargePeriodStart\":\""+date+"\",\"ChargePeriodEnd\":\""+date+"\",\"PricingUnit\":\"requests\",\"ContractedCost\":"+cost+",\"CumulatedContractedCost\":999}";
 string Bill(params string[] rows)=>"{\"result\":["+string.Join(",",rows)+"]}";
 var billing=CloudflareClient.ParseCost(Parse(Bill(Charge("2026-09-01T00:00:00Z"),Charge("2026-09-02T00:00:00Z"))),account);
 Check("cost-sums-intervals-not-cumulative",billing.Value==1.5&&billing.Unit=="USD");
+var mixedBilling=CloudflareClient.ParseCost(Parse(Bill(
+    Charge("2026-08-12T00:00:00Z",cost:"9.00",period:"2026-08-11T00:00:00Z"),
+    Charge("2026-09-12T00:00:00Z",cost:"0.25",period:"2026-09-11T00:00:00Z"),
+    Charge("2026-09-13T00:00:00Z",cost:"0.35",period:"2026-09-11T00:00:00Z"),
+    Charge("2026-10-12T00:00:00Z",cost:"99.00",period:"2026-10-11T00:00:00Z"))),account,new DateTimeOffset(2026,9,18,0,0,0,TimeSpan.Zero));
+Check("cost-selects-latest-started-period",mixedBilling.Value==0.60&&mixedBilling.PeriodStart==new DateTimeOffset(2026,9,11,0,0,0,TimeSpan.Zero)&&mixedBilling.Note=="CURRENT PERIOD / USAGE");
+Check("cost-excludes-old-and-future-periods",mixedBilling.Detail.Contains("other billing period(s) returned by API were excluded"));
 Check("empty-billing-not-zero",CloudflareClient.ParseCost(Parse(Bill()),account).State==SourceState.NoData);
 Throws("mixed-currency-rejected",()=>CloudflareClient.ParseCost(Parse(Bill(Charge("a"),Charge("b","EUR"))),account));
 Throws("duplicate-billing-rejected",()=>CloudflareClient.ParseCost(Parse(Bill(Charge("a"),Charge("a"))),account));

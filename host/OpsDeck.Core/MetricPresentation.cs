@@ -16,7 +16,7 @@ public static class MetricPresentation
             if(!Freshness.IsCurrent(m.CollectedAt,now,ttl))return "COLLECTION STALE";
             if(m.SourceEnd.HasValue&&!Freshness.IsCurrent(m.SourceEnd,now,UsageSourceTtl))return "SOURCE STALE";
             if(!m.SourceEnd.HasValue)return "SOURCE DATE UNKNOWN";
-            if(!m.PeriodStart.HasValue||!m.PeriodEnd.HasValue||m.PeriodEnd<=m.PeriodStart)return "PERIOD UNKNOWN";
+            if(!m.PeriodStart.HasValue||(m.PeriodEnd.HasValue&&m.PeriodEnd<=m.PeriodStart))return "PERIOD UNKNOWN";
         }
         return Ascii(m.Note,40);
     }
