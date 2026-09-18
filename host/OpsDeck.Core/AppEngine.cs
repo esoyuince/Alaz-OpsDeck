@@ -102,7 +102,7 @@ public sealed partial class AppEngine : IAsyncDisposable
         return [
             new(UnifiedProviderKind.ManagedCodex,"Managed Codex",managed.State,managed.Activity,$"Owned {managed.OwnedThreads} | reconcile {(managed.ReconciliationRequired?"required":"no")}",AgentCapability.SubmitTask|AgentCapability.StopTask|AgentCapability.ResumeTask|AgentCapability.RetryTask|AgentCapability.ContinueTask,managed.ObservedAt),
             new(UnifiedProviderKind.ChatGptMcp,"ChatGPT MCP",f.Agents.BridgeState,task?.State==SourceState.Ok?"TASK META":"BRIDGE "+f.Agents.BridgeState.ToString().ToUpperInvariant(),"OAuth-owned ChatGPT control remains external; OpsDeck observes bridge/task metadata only.",AgentCapability.None,f.Agents.ObservedAt),
-            new(UnifiedProviderKind.RemoteDesktopCommander,"Remote Desktop Commander",rdc.State,rdc.ProcessCount>0?"LOCAL ACTIVE":"OFFLINE",rdc.TotalCalls.HasValue?$"{rdc.TotalCalls} calls | {rdc.Sessions??0} sessions":rdc.Detail,AgentCapability.None,rdc.ObservedAt)
+            new(UnifiedProviderKind.RemoteDesktopCommander,"Remote Desktop Commander",rdc.State,rdc.ProcessCount>0?"LOCAL ACTIVE":"OFFLINE",rdc.RunCalls.HasValue?$"{rdc.RunCalls} run calls | {rdc.RunSessions??0} run sessions | {rdc.TotalCalls??0} lifetime calls":rdc.TotalCalls.HasValue?$"{rdc.TotalCalls} lifetime calls | {rdc.Sessions??0} lifetime sessions":rdc.Detail,AgentCapability.None,rdc.ObservedAt)
         ];
     }
     public TelemetryEventContext ReadTelemetryEventContext(DateTimeOffset from,DateTimeOffset to,int limit=200)

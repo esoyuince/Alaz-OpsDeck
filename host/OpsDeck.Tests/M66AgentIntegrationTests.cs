@@ -32,17 +32,23 @@ public static class M66AgentIntegrationTests
         string cfg=Path.Combine(dir,"rdc-config.json"),history=Path.Combine(dir,"rdc-history.jsonl");
         File.WriteAllText(cfg,JsonSerializer.Serialize(new{clientId="secret-ignored",usageStats=new{totalCalls=100L,successfulCalls=97L,failedCalls=3L,sessionCount=9L,toolCounts=new{read_file=20,start_process=8}}}));
         var u=DesktopCommanderSampler.ReadUsage(cfg);c("rdc-usage",u.Total==100&&u.Ok==97&&u.Failed==3&&u.Sessions==9&&u.Tools==2);
-        File.WriteAllText(history,JsonSerializer.Serialize(new{timestamp=now.ToString("O"),toolName="read_file",arguments=new{secret="do-not-read"},output=new{secret="do-not-read"}})+Environment.NewLine);
+        File.WriteAllText(history,string.Join(Environment.NewLine,new[]{
+            JsonSerializer.Serialize(new{timestamp=now.AddMinutes(-40).ToString("O"),toolName="read_file",arguments=new{secret="do-not-read"},output=new{secret="do-not-read"}}),
+            JsonSerializer.Serialize(new{timestamp=now.AddMinutes(-5).ToString("O"),toolName="read_file",arguments=new{secret="do-not-read"},output=new{secret="do-not-read"}}),
+            JsonSerializer.Serialize(new{timestamp=now.ToString("O"),toolName="read_file",arguments=new{secret="do-not-read"},output=new{secret="do-not-read"}})
+        })+Environment.NewLine);
         var last=DesktopCommanderSampler.ReadLastTool(history);c("rdc-last-tool",last.Tool=="read_file"&&last.At.HasValue);
-        var snap=new DesktopCommanderSnapshot(SourceState.Ok,now,2,100,97,3,9,2,"read_file",now);
-        c("rdc-success-permille",snap.SuccessPermille==970);
+        var run=DesktopCommanderSampler.ReadRunUsage(history,now.AddMinutes(-45));c("rdc-run-usage",run.Calls==3&&run.Sessions==2);
+        var recentRun=DesktopCommanderSampler.ReadRunUsage(history,now.AddMinutes(-10));c("rdc-run-window",recentRun.Calls==2&&recentRun.Sessions==1);
+        var snap=new DesktopCommanderSnapshot(SourceState.Ok,now,2,100,97,3,9,2,"read_file",now,RunCalls:7,RunSessions:1);
+        c("rdc-success-permille",snap.SuccessPermille==970&&snap.RunCalls==7&&snap.RunSessions==1);
     }
     private static void TestWire(Action<string,bool> c,DateTimeOffset now)
     {
-        var rdc=new DesktopCommanderSnapshot(SourceState.Ok,now,2,10574,10545,29,27,22,"read_file",now.AddSeconds(-4));
+        var rdc=new DesktopCommanderSnapshot(SourceState.Ok,now,2,10574,10545,29,27,22,"read_file",now.AddSeconds(-4),RunCalls:89,RunSessions:1);
         var fleet=FleetState.Empty with{Agents=new AgentSample(1,SourceState.Ok,SourceState.Ok,now,"",null,rdc)};
         using var doc=JsonDocument.Parse(fleet.Wire(now,false));var a=doc.RootElement.GetProperty("agents");
-        c("wire-rdc",a.GetProperty("rdc_state").GetInt32()==1&&a.GetProperty("rdc_process_count").GetInt32()==2&&a.GetProperty("rdc_total_calls").GetInt32()==10574&&a.GetProperty("rdc_sessions").GetInt32()==27&&a.GetProperty("rdc_success_permille").GetInt32()==997);
+        c("wire-rdc",a.GetProperty("rdc_state").GetInt32()==1&&a.GetProperty("rdc_process_count").GetInt32()==2&&a.GetProperty("rdc_total_calls").GetInt32()==89&&a.GetProperty("rdc_sessions").GetInt32()==1&&a.GetProperty("rdc_success_permille").GetInt32()==997);
         using var locked=JsonDocument.Parse(fleet.Wire(now,true));c("wire-rdc-lock",locked.RootElement.GetProperty("agents").GetProperty("rdc_total_calls").GetInt32()==-1);
         var managed=new ManagedCodexSnapshot(SourceState.Ok,now,true,2,"managed:test","thread","turn","RUNNING",false);using var managedDoc=JsonDocument.Parse(fleet.Wire(now,false,null,null,managed));var ma=managedDoc.RootElement.GetProperty("agents");
         c("wire-managed",ma.GetProperty("managed_codex_state").GetInt32()==1&&ma.GetProperty("managed_codex_owned").GetInt32()==2&&ma.GetProperty("managed_codex_running").GetBoolean()&&ma.GetProperty("managed_codex_runtime").GetBoolean()&&!ma.GetProperty("managed_codex_reconcile").GetBoolean());
