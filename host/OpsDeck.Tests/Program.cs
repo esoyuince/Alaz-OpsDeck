@@ -42,6 +42,7 @@ if(args.Contains("--m69-autostart-only")){OpsDeck.Tests.M69AutostartTests.Run(Ch
 if(args.Contains("--m613-edgenode-only")){await OpsDeck.Tests.M613EdgeNodeTests.Run(Check);Console.WriteLine($"RESULT passed={passed} failed={failed}");return failed==0?0:1;}
 if(args.Contains("--m613-edgenode-live"))return await OpsDeck.Tests.M613EdgeNodeTests.Live();
 if(args.Contains("--m614-fan-only")){OpsDeck.Tests.M614FanControlTests.Run(Check);Console.WriteLine($"RESULT passed={passed} failed={failed}");return failed==0?0:1;}
+if(args.Contains("--m615-perf-only")){OpsDeck.Tests.M615ResponsivenessTests.Run(Check);Console.WriteLine($"RESULT passed={passed} failed={failed}");return failed==0?0:1;}
 if(args.Contains("--m68-actions-live"))return await OpsDeck.Tests.M68SessionCenterTests.LiveActions();
 if(args.Contains("--m67-deck-control-only")){await OpsDeck.Tests.M67DeckControlTests.Run(Check);Console.WriteLine($"RESULT passed={passed} failed={failed}");return failed==0?0:1;}
 if(args.Contains("--m53-history-only")){OpsDeck.Tests.M53HistoryTests.Run(Check);Console.WriteLine($"RESULT passed={passed} failed={failed}");return failed==0?0:1;}
@@ -158,6 +159,7 @@ await OpsDeck.Tests.M68ScreenCloseoutTests.Run(Check);
 OpsDeck.Tests.M69AutostartTests.Run(Check);
 await OpsDeck.Tests.M613EdgeNodeTests.Run(Check);
 OpsDeck.Tests.M614FanControlTests.Run(Check);
+OpsDeck.Tests.M615ResponsivenessTests.Run(Check);
 Console.WriteLine($"RESULT passed={passed} failed={failed}");return failed==0?0:1;
 sealed class FakeHandler(int code,string response):HttpMessageHandler
 {

@@ -17,7 +17,7 @@
 
 static lv_obj_t *root,*status_label,*repo_label,*mode_button,*mode_label,*confirm_button,*cancel_button,*history_label[3];
 static lv_obj_t *composer,*composer_ta,*composer_kb,*composer_note;
-static int selected_workspace,selected_sandbox;
+static int selected_workspace,selected_sandbox;static uint32_t last_render_sequence=UINT32_MAX;static int64_t last_render_second=-1;static int last_render_workspace=-1;
 static lv_color_t color(uint32_t v){return lv_color_hex(v);}
 static lv_obj_t *label(lv_obj_t *p,int x,int y,int w,const char *s,const lv_font_t *font,uint32_t c)
 {
@@ -77,7 +77,7 @@ void opsdeck_agent_ui_create(lv_obj_t *parent,int x,int y,int w,int h)
 void opsdeck_agent_ui_refresh(int64_t now)
 {
  if(!root)return;
- opsdeck_agent_control_t s;opsdeck_agent_control_copy(&s);char b[128];int age=s.received_us?(int)((now-s.received_us)/1000000):999999;bool fresh=s.present&&age<16;
+ opsdeck_agent_control_t s;opsdeck_agent_control_copy(&s);int64_t second=now/1000000;if(s.sequence==last_render_sequence&&second==last_render_second&&selected_workspace==last_render_workspace)return;last_render_sequence=s.sequence;last_render_second=second;last_render_workspace=selected_workspace;char b[128];int age=s.received_us?(int)((now-s.received_us)/1000000):999999;bool fresh=s.present&&age<16;
  uint32_t sc=MUTED;if(!fresh)snprintf(b,sizeof(b),"CONTROL STALE");else if(s.locked)snprintf(b,sizeof(b),"LOCKED");else{const char *ph[]={"IDLE","RECEIVING","CONFIRM","EXECUTING","DONE","FAILED","CANCELLED"};snprintf(b,sizeof(b),"%s | %s",ph[(s.phase>=0&&s.phase<=6)?s.phase:0],s.result);sc=s.phase==4?GREEN:s.phase==5?RED:s.phase==2?AMBER:s.phase==3?CYAN:MUTED;}
  lv_label_set_text(status_label,b);lv_obj_set_style_text_color(status_label,color(sc),0);
  if(fresh&&s.workspace_count>0){if(selected_workspace>=s.workspace_count)selected_workspace=0;snprintf(b,sizeof(b),"Repo %d/%d: %s",selected_workspace+1,s.workspace_count,s.workspaces[selected_workspace].name);}else snprintf(b,sizeof(b),"Repo: --");lv_label_set_text(repo_label,b);
@@ -90,5 +90,5 @@ void opsdeck_agent_ui_refresh(int64_t now)
 }
 void opsdeck_agent_ui_clear(void)
 {
- if(composer){lv_obj_delete(composer);composer=NULL;}root=status_label=repo_label=mode_button=mode_label=confirm_button=cancel_button=NULL;composer_ta=composer_kb=composer_note=NULL;for(int i=0;i<3;i++)history_label[i]=NULL;
+ if(composer){lv_obj_delete(composer);composer=NULL;}root=status_label=repo_label=mode_button=mode_label=confirm_button=cancel_button=NULL;composer_ta=composer_kb=composer_note=NULL;for(int i=0;i<3;i++)history_label[i]=NULL;last_render_sequence=UINT32_MAX;last_render_second=-1;last_render_workspace=-1;
 }

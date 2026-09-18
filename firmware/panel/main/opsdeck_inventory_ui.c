@@ -5,7 +5,7 @@
 #include <string.h>
 #include <inttypes.h>
 static lv_obj_t *title,*coverage,*empty,*footer,*page_text,*prev,*next,*account_labels[2],*accounts[2],*views[2];
-static lv_obj_t *row_buttons[4],*row_labels[4],*row_details[4];
+static lv_obj_t *row_buttons[4],*row_labels[4],*row_details[4];static uint32_t last_render_sequence=UINT32_MAX;static int last_render_request=-1;static int64_t last_render_second=-1;
 #define BG 0x121E30
 #define EDGE 0x23354C
 #define INK 0xEDF5FF
@@ -66,7 +66,7 @@ static void open_project(lv_event_t *e)
 }
 void opsdeck_inventory_ui_clear(void)
 {
-    title=NULL; /* All other references belong to the deleted page and are not read while title==NULL. */
+    title=NULL;last_render_sequence=UINT32_MAX;last_render_request=-1;last_render_second=-1; /* Deleted page refs are not read while title==NULL. */
 }
 void opsdeck_inventory_ui_create(lv_obj_t *parent)
 {
@@ -97,7 +97,7 @@ void opsdeck_inventory_ui_create(lv_obj_t *parent)
 void opsdeck_inventory_ui_refresh(int64_t now)
 {
     if(!title)return;
-    opsdeck_inventory_t s;opsdeck_inventory_query_t q;opsdeck_inventory_copy(&s,&q);
+    opsdeck_inventory_t s;opsdeck_inventory_query_t q;opsdeck_inventory_copy(&s,&q);int64_t second=now/1000000;if(s.sequence==last_render_sequence&&q.request_id==last_render_request&&second==last_render_second)return;last_render_sequence=s.sequence;last_render_request=q.request_id;last_render_second=second;
     char b[192];
     for(int i=0;i<2;i++){
         opsdeck_cloud_t a;opsdeck_cloud_copy(i,&a);

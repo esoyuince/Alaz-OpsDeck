@@ -190,7 +190,7 @@ public sealed partial class AppEngine : IAsyncDisposable
         ReloadProjectMappings();
         try{
             var store=new OperationalEventStore(Path.Combine(settings.DirectoryPath,"ops-events.db"));Volatile.Write(ref operationalStore,store);
-            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.14-A / Fan Control"));
+            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.15-A / Responsiveness"));
         }catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("ops_timeline_unavailable",new{kind=e.GetType().Name});}
         try{Volatile.Write(ref telemetryHistory,new TelemetryHistoryStore(Path.Combine(settings.DirectoryPath,"telemetry-history.db")));}
         catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("telemetry_history_unavailable",new{kind=e.GetType().Name});}
@@ -242,7 +242,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                 finally{cf.Dispose();}
             }));
         }
-        log.Event("host_started",new{version="M6.14-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
+        log.Event("host_started",new{version="M6.15-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
     }
     private bool UsbPrimaryHealthy()
     {
@@ -389,10 +389,16 @@ public sealed partial class AppEngine : IAsyncDisposable
                 if(!IsExpectedUsbPort(config.Port)){LinkError();Volatile.Write(ref serialStatus,"Expected CH340K not found on "+config.Port);await Task.Delay(3000,stop.Token);continue;}
                 using var port=new SerialPort(config.Port,115200){DtrEnable=false,RtsEnable=false,Handshake=Handshake.None,ReadTimeout=100,WriteTimeout=1000,NewLine="\n",Encoding=PanelSerialEncoding};
                 port.Open();LinkOpened();Volatile.Write(ref panelReceipts,new PanelReceipt());failures=0;Volatile.Write(ref panelEvidence,"New connection / awaiting fresh device evidence");long serialEpoch=Interlocked.Read(ref resetEpoch);Volatile.Write(ref serialStatus,"USB open; waiting for device evidence");log.Event("serial_open");
-                var timer=Stopwatch.StartNew();long nextPc=0,nextProcesses=0,nextStatus=0,nextInventory=0,nextPair=0,lastInventory=-5000,lastRx=-1,lastForward=0,lastPanelPackets=-1;bool forwardSeen=false;int framesSent=0;string pending="";string? lastChatWire=null;
+                var timer=Stopwatch.StartNew();long nextPc=0,nextProcesses=0,nextStatus=0,nextInventory=0,nextPair=0,nextTx=0,nextChatCheck=0,lastRx=-1,lastForward=0,lastPanelPackets=-1;bool forwardSeen=false;int framesSent=0;string pending="";string? lastChatWire=null;
+                var statusFrames=new Queue<string>();
                 var inventoryQuery=new PanelInventoryRequest();
-                PanelDetailsRequest? detailsQuery=null;long nextDetails=0,lastDetails=-5000,lastDetailsRequest=-20000;
-                PanelOpsViewRequest? opsViewQuery=null;long nextOpsView=0,lastOpsView=-5000,lastOpsViewRequest=-20000;
+                PanelDetailsRequest? detailsQuery=null;long nextDetails=0,lastDetailsRequest=-20000;
+                PanelOpsViewRequest? opsViewQuery=null;long nextOpsView=0,lastOpsViewRequest=-20000;
+                void SendFrame(string frame)
+                {
+                    if(System.Text.Encoding.UTF8.GetByteCount(frame)>3000)throw new InvalidOperationException("Panel frame exceeds protocol budget");
+                    port.WriteLine(frame);framesSent++;nextTx=timer.ElapsedMilliseconds+PanelSerialPacing.GapMs(frame);
+                }
                 while(!stop.IsCancellationRequested&&!SerialPaused&&!PowerSuspended&&serialEpoch==Interlocked.Read(ref resetEpoch)){
                     if(port.BytesToRead>0){
                         pending+=port.ReadExisting();if(pending.Length>16384)pending="";
@@ -400,11 +406,11 @@ public sealed partial class AppEngine : IAsyncDisposable
                         while((newline=pending.IndexOf('\n'))>=0){string line=pending[..newline].Trim();pending=pending[(newline+1)..];
                             if(wifiPairingId is string pairId&&wifiTlsFingerprint is string tlsFp&&WifiPairing.TryAck(line,pairId,tlsFp,out string pairedDevice)){Interlocked.Exchange(ref wifiPairingAcked,1);log.Event("wifi_pairing_ack",new{device=pairedDevice,pair_id=pairId,tls_pin=tlsFp[..12]});continue;}
                             ObservePanelAgentLine(line);ObservePanelCodexLine(line);ObserveFanControlLine(line);
-                            if(PanelInventoryRequest.TryParse(line,out var requested)&&requested!=inventoryQuery){inventoryQuery=requested!;nextInventory=Math.Max(timer.ElapsedMilliseconds,lastInventory+1000);}
-                            if(PanelDetailsRequest.TryParse(line,out var detailRequest)){lastDetailsRequest=timer.ElapsedMilliseconds;if(detailRequest!=detailsQuery){detailsQuery=detailRequest;nextDetails=Math.Max(timer.ElapsedMilliseconds,lastDetails+1000);}}
-                            if(PanelOpsViewRequest.TryParse(line,out var opsRequest)){lastOpsViewRequest=timer.ElapsedMilliseconds;if(opsRequest!=opsViewQuery){opsViewQuery=opsRequest;nextOpsView=Math.Max(timer.ElapsedMilliseconds,lastOpsView+1000);}}
+                            if(PanelInventoryRequest.TryParse(line,out var requested)&&requested!=inventoryQuery){inventoryQuery=requested!;nextInventory=timer.ElapsedMilliseconds;}
+                            if(PanelDetailsRequest.TryParse(line,out var detailRequest)){lastDetailsRequest=timer.ElapsedMilliseconds;if(detailRequest!=detailsQuery){detailsQuery=detailRequest;nextDetails=timer.ElapsedMilliseconds;}}
+                            if(PanelOpsViewRequest.TryParse(line,out var opsRequest)){lastOpsViewRequest=timer.ElapsedMilliseconds;if(opsRequest!=opsViewQuery){opsViewQuery=opsRequest;nextOpsView=timer.ElapsedMilliseconds;}}
                             if(line.Length<=240&&!line.Any(char.IsControl)&&(line.Contains("Guru Meditation Error",StringComparison.Ordinal)||line.Contains("Task watchdog got triggered",StringComparison.OrdinalIgnoreCase)||line.Contains("Stack canary",StringComparison.OrdinalIgnoreCase)||line.Contains("stack overflow",StringComparison.OrdinalIgnoreCase)||line.Contains("panic'ed",StringComparison.OrdinalIgnoreCase)||line.StartsWith("abort()",StringComparison.Ordinal)||line.StartsWith("Backtrace:",StringComparison.Ordinal)))log.Event("panel_crash",new{evidence=line});
-                            var match=Regex.Match(line,@"opsdeck(?:\.ui|\.wifi)?: ((?:PC_RX|STATUS_RX|CLOUD_RX|INVENTORY_RX|AGENT_CONTROL_RX|CODEX_SESSIONS_RX|CODEX_CHAT_RX|CODEX_CHAT_REQUEST|CODEX_UI|PROCESS_RX|INVENTORY_REQUEST|DETAILS_RX|DETAILS_REQUEST|OPSVIEW_RX|OPSVIEW_REQUEST|HEALTH|TLS_PERF|SOURCE_STATE|READY|PAGE|BOOT)[ A-Za-z0-9_=.:%-]{0,240})$");
+                            var match=Regex.Match(line,@"opsdeck(?:\.ui|\.wifi)?: ((?:PC_RX|STATUS_RX|CLOUD_RX|INVENTORY_RX|AGENT_CONTROL_RX|CODEX_SESSIONS_RX|CODEX_CHAT_RX|CODEX_CHAT_REQUEST|CODEX_UI|PROCESS_RX|INVENTORY_REQUEST|DETAILS_RX|DETAILS_REQUEST|OPSVIEW_RX|OPSVIEW_REQUEST|HEALTH|TLS_PERF|SOURCE_STATE|READY|PAGE|SCREEN_OPEN|BOOT)[ A-Za-z0-9_=.:%-]{0,240})$");
                             if(match.Success){
                                 string evidence=match.Groups[1].Value;var before=panelReceipts;var after=before.Observe(evidence);Volatile.Write(ref panelReceipts,after);long observedAt=timer.ElapsedMilliseconds;
                                 if(CoreAckCount(after)>CoreAckCount(before)){bool wasRecovering=recovery.Recovering;recovery.ObserveForwardProgress();LinkForward();forwardSeen=true;lastForward=observedAt;if(wasRecovering)log.Event("serial_forward_recovered",new{via="ack"});}
@@ -419,19 +425,42 @@ public sealed partial class AppEngine : IAsyncDisposable
                     }
                     long now=timer.ElapsedMilliseconds;
                     Volatile.Write(ref serialStatus,lastRx>=0&&now-lastRx<15000?"USB connected / device responding":"USB open / no recent device response");
-                    if(Volatile.Read(ref wifiPairingAcked)==0&&wifiPairingKey is string pairKey&&wifiTlsIdentity is WifiTlsIdentity tlsId&&now>=nextPair){port.WriteLine(WifiPairing.PairFrame(pairKey,tlsId.CertificateDer));framesSent++;nextPair=now+5000;await Task.Delay(20,stop.Token);}
-                    if(now>=nextPc&&PcIsFresh){string pcFrame=Pc.Wire(FanControl);if(System.Text.Encoding.UTF8.GetByteCount(pcFrame)>3000)throw new InvalidOperationException("PC frame exceeds protocol budget");port.WriteLine(pcFrame);framesSent++;nextPc=now+1000;await Task.Delay(150,stop.Token);}
-                    if(now>=nextProcesses&&Processes.CollectedAt.HasValue){string processFrame=Processes.Wire();if(System.Text.Encoding.UTF8.GetByteCount(processFrame)>3000)throw new InvalidOperationException("Process frame exceeds protocol budget");port.WriteLine(processFrame);framesSent++;nextProcesses=now+2000;await Task.Delay(70,stop.Token);}
-                    if(now>=nextStatus){var msg=Fleet.Wire(DateTimeOffset.UtcNow,Locked,LinkHealth,CodexUsage,ManagedCodex);if(System.Text.Encoding.UTF8.GetByteCount(msg)>3000)throw new InvalidOperationException("Status frame exceeds protocol budget");port.WriteLine(msg);framesSent++;await Task.Delay(160,stop.Token);
+                    if(now>=nextStatus&&statusFrames.Count==0)
+                    {
+                        statusFrames.Enqueue(Fleet.Wire(DateTimeOffset.UtcNow,Locked,LinkHealth,CodexUsage,ManagedCodex));
                         var profiles=Accounts;
-                        for(int i=0;i<profiles.Length;i++){string frame=profiles[i].Wire(i,profiles.Length,generation,DateTimeOffset.UtcNow);if(System.Text.Encoding.UTF8.GetByteCount(frame)>3000)throw new InvalidOperationException("Account frame too large");port.WriteLine(frame);framesSent++;await Task.Delay(160,stop.Token);}
-                        string agentFrame=PanelAgentFrame();if(System.Text.Encoding.UTF8.GetByteCount(agentFrame)>3000)throw new InvalidOperationException("Agent control frame exceeds protocol budget");port.WriteLine(agentFrame);framesSent++;await Task.Delay(160,stop.Token);
-                        string sessionsFrame=PanelCodexSessionsFrame();if(System.Text.Encoding.UTF8.GetByteCount(sessionsFrame)>3000)throw new InvalidOperationException("Codex sessions frame exceeds protocol budget");port.WriteLine(sessionsFrame);framesSent++;await Task.Delay(160,stop.Token);
-                        nextStatus=timer.ElapsedMilliseconds+5000;}
-                    string? chatFrame=PanelCodexChatFrame();if(chatFrame!=null&&!string.Equals(chatFrame,lastChatWire,StringComparison.Ordinal)){if(System.Text.Encoding.UTF8.GetByteCount(chatFrame)>3000)throw new InvalidOperationException("Codex chat frame exceeds protocol budget");port.WriteLine(chatFrame);framesSent++;lastChatWire=chatFrame;await Task.Delay(50,stop.Token);}
-                    if(timer.ElapsedMilliseconds>=nextInventory){port.WriteLine(InventoryFrame(inventoryQuery));framesSent++;lastInventory=timer.ElapsedMilliseconds;nextInventory=lastInventory+5000;await Task.Delay(160,stop.Token);}
-                    if(detailsQuery!=null&&timer.ElapsedMilliseconds-lastDetailsRequest<16000&&timer.ElapsedMilliseconds>=nextDetails){port.WriteLine(ReadPanelDetails(detailsQuery,DateTimeOffset.UtcNow).Wire(generation));framesSent++;lastDetails=timer.ElapsedMilliseconds;nextDetails=lastDetails+5000;await Task.Delay(160,stop.Token);}
-                    if(opsViewQuery!=null&&timer.ElapsedMilliseconds-lastOpsViewRequest<16000&&timer.ElapsedMilliseconds>=nextOpsView){port.WriteLine(PanelOpsViewFrame(opsViewQuery));framesSent++;lastOpsView=timer.ElapsedMilliseconds;nextOpsView=lastOpsView+5000;await Task.Delay(120,stop.Token);}
+                        for(int i=0;i<profiles.Length;i++)statusFrames.Enqueue(profiles[i].Wire(i,profiles.Length,generation,DateTimeOffset.UtcNow));
+                        statusFrames.Enqueue(PanelAgentFrame());statusFrames.Enqueue(PanelCodexSessionsFrame());nextStatus=now+5000;
+                    }
+                    if(now>=nextTx)
+                    {
+                        string? tx=null;
+                        if(detailsQuery!=null&&now-lastDetailsRequest<16000&&now>=nextDetails)
+                        {
+                            tx=ReadPanelDetails(detailsQuery,DateTimeOffset.UtcNow).Wire(generation);nextDetails=now+5000;
+                        }
+                        else if(opsViewQuery!=null&&now-lastOpsViewRequest<16000&&now>=nextOpsView)
+                        {
+                            tx=PanelOpsViewFrame(opsViewQuery);nextOpsView=now+5000;
+                        }
+                        else if(now>=nextInventory)
+                        {
+                            tx=InventoryFrame(inventoryQuery);nextInventory=now+5000;
+                        }
+                        else if(now>=nextChatCheck)
+                        {
+                            nextChatCheck=now+50;string? chatFrame=PanelCodexChatFrame();
+                            if(chatFrame!=null&&!string.Equals(chatFrame,lastChatWire,StringComparison.Ordinal)){tx=chatFrame;lastChatWire=chatFrame;}
+                        }
+                        if(tx==null&&Volatile.Read(ref wifiPairingAcked)==0&&wifiPairingKey is string pairKey&&wifiTlsIdentity is WifiTlsIdentity tlsId&&now>=nextPair)
+                        {
+                            tx=WifiPairing.PairFrame(pairKey,tlsId.CertificateDer);nextPair=now+5000;
+                        }
+                        if(tx==null&&now>=nextPc&&PcIsFresh){tx=Pc.Wire(FanControl);nextPc=now+1000;}
+                        if(tx==null&&now>=nextProcesses&&Processes.CollectedAt.HasValue){tx=Processes.Wire();nextProcesses=now+2000;}
+                        if(tx==null&&statusFrames.Count>0)tx=statusFrames.Dequeue();
+                        if(tx!=null)SendFrame(tx);
+                    }
                     now=timer.ElapsedMilliseconds;long deviceAge=lastRx<0?-1:now-lastRx;long forwardAge=forwardSeen?now-lastForward:now;
                     var decision=recovery.Evaluate(serialLife.ElapsedMilliseconds,now,deviceAge,forwardAge,framesSent);
                     if(decision.Action!=SerialRecoveryAction.None){
@@ -443,7 +472,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                         await Task.Delay(250,stop.Token);
                         break;
                     }
-                    await Task.Delay(50,stop.Token);
+                    await Task.Delay(PanelSerialPacing.LoopDelayMs,stop.Token);
                 }
             }catch(OperationCanceledException)when(stop.IsCancellationRequested){break;}
             catch(Exception e)when(e is UnauthorizedAccessException or IOException or InvalidOperationException or TimeoutException or System.Security.SecurityException){

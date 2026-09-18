@@ -27,6 +27,7 @@ static portMUX_TYPE pc_mux=portMUX_INITIALIZER_UNLOCKED;
 static opsdeck_pc_t pc;
 static opsdeck_board_t hw;
 static lv_obj_t *body,*uptime,*badge,*top_brand,*home_btn,*settings_transport,*settings_wifi;
+static lv_obj_t *home_root,*dynamic_root;static bool home_cached;
 static lv_obj_t *cpu_arc,*gpu_arc,*cpu_value,*gpu_value,*gpu_temp;
 static lv_obj_t *intel_arc,*intel_value,*chassis_temp,*intel_shared,*fan_text;
 static lv_obj_t *cpu_temp,*disk_text,*disk_detail[2],*disk_scope,*billing_period,*billing_source,*hosting_scope;
@@ -42,11 +43,78 @@ static lv_chart_series_t *rx_series,*tx_series,*overview_rx_series,*overview_tx_
 static uint32_t last_sequence=UINT32_MAX,touch_count;
 static int chart_ceiling=10;
 static lv_obj_t *agent_value[3],*agent_note[3],*codex_quota_bar,*codex_quota_text,*codex_quota_reset_text,*codex_spark_bar,*codex_spark_text,*codex_spark_reset_text,*task_summary,*task_detail,*task_detail2,*task_age,*link_state_text,*link_counts,*link_last,*settings_sd,*cloud_value[5],*cloud_note[5],*provider_summary;
+static lv_obj_t *chart_scale;
+
+typedef struct {
+    lv_obj_t *settings_transport,*settings_wifi,*cpu_arc,*gpu_arc,*cpu_value,*gpu_value,*gpu_temp;
+    lv_obj_t *intel_arc,*intel_value,*chassis_temp,*intel_shared,*fan_text,*cpu_temp,*disk_text,*disk_detail[2],*disk_scope,*billing_period,*billing_source,*hosting_scope;
+    lv_obj_t *cloud_buttons[3],*cloud_button_labels[3],*cloud_scope,*cloud_health_badge,*cloud_account_health[5];
+    lv_obj_t *ram_bar,*vram_bar,*ram_text,*vram_text,*network,*chart,*overview_net_chart,*device_heap;
+    lv_obj_t *ram_arc,*vram_arc,*shared_arc,*ram_gauge_value,*vram_gauge_value,*shared_gauge_value;
+    lv_obj_t *fan1_arc,*fan2_arc,*disk_arc,*fan1_value,*fan2_value,*disk_gauge_value,*fan1_rpm_text,*fan2_rpm_text;
+    lv_chart_series_t *rx_series,*tx_series,*overview_rx_series,*overview_tx_series;
+    lv_obj_t *chart_scale,*provider_summary,*codex_quota_bar,*codex_quota_text,*codex_quota_reset_text,*codex_spark_bar,*codex_spark_text,*codex_spark_reset_text;
+    lv_obj_t *task_summary,*task_detail,*task_detail2,*task_age,*link_state_text,*link_counts,*link_last,*settings_sd;
+    lv_obj_t *agent_value[3],*agent_note[3],*cloud_value[5],*cloud_note[5];
+} home_refs_t;
+static home_refs_t home_refs;
+
+static void clear_page_refs(void)
+{
+    cpu_temp=disk_text=disk_scope=billing_period=billing_source=hosting_scope=NULL;disk_detail[0]=disk_detail[1]=NULL;
+    intel_arc=intel_value=chassis_temp=intel_shared=fan_text=cloud_scope=cloud_health_badge=NULL;
+    for(int i=0;i<3;i++){cloud_buttons[i]=cloud_button_labels[i]=NULL;}for(int i=0;i<5;i++)cloud_account_health[i]=NULL;
+    cpu_arc=gpu_arc=cpu_value=gpu_value=gpu_temp=NULL;
+    ram_bar=vram_bar=ram_text=vram_text=network=chart=overview_net_chart=device_heap=NULL;
+    ram_arc=vram_arc=shared_arc=ram_gauge_value=vram_gauge_value=shared_gauge_value=NULL;fan1_rpm_text=fan2_rpm_text=NULL;
+    fan1_arc=fan2_arc=disk_arc=fan1_value=fan2_value=disk_gauge_value=NULL;
+    rx_series=tx_series=overview_rx_series=overview_tx_series=NULL;chart_scale=NULL;chart_ceiling=10;provider_summary=NULL;
+    codex_quota_bar=codex_quota_text=codex_quota_reset_text=codex_spark_bar=codex_spark_text=codex_spark_reset_text=NULL;
+    task_summary=task_detail=task_detail2=task_age=NULL;link_state_text=link_counts=link_last=settings_sd=settings_transport=settings_wifi=NULL;
+    for(int i=0;i<3;i++){agent_value[i]=agent_note[i]=NULL;}for(int i=0;i<5;i++){cloud_value[i]=cloud_note[i]=NULL;}
+}
+static void save_home_refs(void)
+{
+    home_refs.settings_transport=settings_transport;home_refs.settings_wifi=settings_wifi;
+    home_refs.cpu_arc=cpu_arc;home_refs.gpu_arc=gpu_arc;home_refs.cpu_value=cpu_value;home_refs.gpu_value=gpu_value;home_refs.gpu_temp=gpu_temp;
+    home_refs.intel_arc=intel_arc;home_refs.intel_value=intel_value;home_refs.chassis_temp=chassis_temp;home_refs.intel_shared=intel_shared;home_refs.fan_text=fan_text;home_refs.cpu_temp=cpu_temp;home_refs.disk_text=disk_text;
+    home_refs.disk_detail[0]=disk_detail[0];home_refs.disk_detail[1]=disk_detail[1];home_refs.disk_scope=disk_scope;home_refs.billing_period=billing_period;home_refs.billing_source=billing_source;home_refs.hosting_scope=hosting_scope;
+    for(int i=0;i<3;i++){home_refs.cloud_buttons[i]=cloud_buttons[i];home_refs.cloud_button_labels[i]=cloud_button_labels[i];}
+    home_refs.cloud_scope=cloud_scope;home_refs.cloud_health_badge=cloud_health_badge;for(int i=0;i<5;i++)home_refs.cloud_account_health[i]=cloud_account_health[i];
+    home_refs.ram_bar=ram_bar;home_refs.vram_bar=vram_bar;home_refs.ram_text=ram_text;home_refs.vram_text=vram_text;home_refs.network=network;home_refs.chart=chart;home_refs.overview_net_chart=overview_net_chart;home_refs.device_heap=device_heap;
+    home_refs.ram_arc=ram_arc;home_refs.vram_arc=vram_arc;home_refs.shared_arc=shared_arc;home_refs.ram_gauge_value=ram_gauge_value;home_refs.vram_gauge_value=vram_gauge_value;home_refs.shared_gauge_value=shared_gauge_value;
+    home_refs.fan1_arc=fan1_arc;home_refs.fan2_arc=fan2_arc;home_refs.disk_arc=disk_arc;home_refs.fan1_value=fan1_value;home_refs.fan2_value=fan2_value;home_refs.disk_gauge_value=disk_gauge_value;home_refs.fan1_rpm_text=fan1_rpm_text;home_refs.fan2_rpm_text=fan2_rpm_text;
+    home_refs.rx_series=rx_series;home_refs.tx_series=tx_series;home_refs.overview_rx_series=overview_rx_series;home_refs.overview_tx_series=overview_tx_series;
+    home_refs.chart_scale=chart_scale;home_refs.provider_summary=provider_summary;home_refs.codex_quota_bar=codex_quota_bar;home_refs.codex_quota_text=codex_quota_text;home_refs.codex_quota_reset_text=codex_quota_reset_text;
+    home_refs.codex_spark_bar=codex_spark_bar;home_refs.codex_spark_text=codex_spark_text;home_refs.codex_spark_reset_text=codex_spark_reset_text;
+    home_refs.task_summary=task_summary;home_refs.task_detail=task_detail;home_refs.task_detail2=task_detail2;home_refs.task_age=task_age;home_refs.link_state_text=link_state_text;home_refs.link_counts=link_counts;home_refs.link_last=link_last;home_refs.settings_sd=settings_sd;
+    for(int i=0;i<3;i++){home_refs.agent_value[i]=agent_value[i];home_refs.agent_note[i]=agent_note[i];}
+    for(int i=0;i<5;i++){home_refs.cloud_value[i]=cloud_value[i];home_refs.cloud_note[i]=cloud_note[i];}
+}
+static void restore_home_refs(void)
+{
+    settings_transport=home_refs.settings_transport;settings_wifi=home_refs.settings_wifi;
+    cpu_arc=home_refs.cpu_arc;gpu_arc=home_refs.gpu_arc;cpu_value=home_refs.cpu_value;gpu_value=home_refs.gpu_value;gpu_temp=home_refs.gpu_temp;
+    intel_arc=home_refs.intel_arc;intel_value=home_refs.intel_value;chassis_temp=home_refs.chassis_temp;intel_shared=home_refs.intel_shared;fan_text=home_refs.fan_text;cpu_temp=home_refs.cpu_temp;disk_text=home_refs.disk_text;
+    disk_detail[0]=home_refs.disk_detail[0];disk_detail[1]=home_refs.disk_detail[1];disk_scope=home_refs.disk_scope;billing_period=home_refs.billing_period;billing_source=home_refs.billing_source;hosting_scope=home_refs.hosting_scope;
+    for(int i=0;i<3;i++){cloud_buttons[i]=home_refs.cloud_buttons[i];cloud_button_labels[i]=home_refs.cloud_button_labels[i];}
+    cloud_scope=home_refs.cloud_scope;cloud_health_badge=home_refs.cloud_health_badge;for(int i=0;i<5;i++)cloud_account_health[i]=home_refs.cloud_account_health[i];
+    ram_bar=home_refs.ram_bar;vram_bar=home_refs.vram_bar;ram_text=home_refs.ram_text;vram_text=home_refs.vram_text;network=home_refs.network;chart=home_refs.chart;overview_net_chart=home_refs.overview_net_chart;device_heap=home_refs.device_heap;
+    ram_arc=home_refs.ram_arc;vram_arc=home_refs.vram_arc;shared_arc=home_refs.shared_arc;ram_gauge_value=home_refs.ram_gauge_value;vram_gauge_value=home_refs.vram_gauge_value;shared_gauge_value=home_refs.shared_gauge_value;
+    fan1_arc=home_refs.fan1_arc;fan2_arc=home_refs.fan2_arc;disk_arc=home_refs.disk_arc;fan1_value=home_refs.fan1_value;fan2_value=home_refs.fan2_value;disk_gauge_value=home_refs.disk_gauge_value;fan1_rpm_text=home_refs.fan1_rpm_text;fan2_rpm_text=home_refs.fan2_rpm_text;
+    rx_series=home_refs.rx_series;tx_series=home_refs.tx_series;overview_rx_series=home_refs.overview_rx_series;overview_tx_series=home_refs.overview_tx_series;
+    chart_scale=home_refs.chart_scale;provider_summary=home_refs.provider_summary;codex_quota_bar=home_refs.codex_quota_bar;codex_quota_text=home_refs.codex_quota_text;codex_quota_reset_text=home_refs.codex_quota_reset_text;
+    codex_spark_bar=home_refs.codex_spark_bar;codex_spark_text=home_refs.codex_spark_text;codex_spark_reset_text=home_refs.codex_spark_reset_text;
+    task_summary=home_refs.task_summary;task_detail=home_refs.task_detail;task_detail2=home_refs.task_detail2;task_age=home_refs.task_age;link_state_text=home_refs.link_state_text;link_counts=home_refs.link_counts;link_last=home_refs.link_last;settings_sd=home_refs.settings_sd;
+    for(int i=0;i<3;i++){agent_value[i]=home_refs.agent_value[i];agent_note[i]=home_refs.agent_note[i];}
+    for(int i=0;i<5;i++){cloud_value[i]=home_refs.cloud_value[i];cloud_note[i]=home_refs.cloud_note[i];}
+}
 static int32_t history_rx[60],history_tx[60];static unsigned history_count,history_head;
 static uint32_t history_sequence=UINT32_MAX;static int64_t history_last_us;
 static const char *state_name(int s){const char *n[]={"SETUP","OK","ERROR","STALE","NO DATA","PARTIAL","DENIED"};return n[(s>=0&&s<=6)?s:4];}
 static uint32_t state_color(int s){return s==1?0x73E0A9:((s==2||s==6)?0xFF9977:0x8293AD);}
-static lv_obj_t *chart_scale;
+static lv_style_t style_card,style_button;
+static bool shared_styles_ready;
 #define BG 0x090F1B
 #define CARD 0x121E30
 #define EDGE 0x23354C
@@ -72,6 +140,13 @@ static uint32_t load_color(float v,uint32_t normal){return v>=85.0f?RED:(v>=70.0
 static uint32_t temp_color(float v,float amber_at,float red_at){return v>=red_at?RED:(v>=amber_at?AMBER:GREEN);}
 void opsdeck_pc_publish(const opsdeck_pc_t *s){portENTER_CRITICAL(&pc_mux);pc=*s;portEXIT_CRITICAL(&pc_mux);}
 void opsdeck_pc_copy(opsdeck_pc_t *s){portENTER_CRITICAL(&pc_mux);*s=pc;portEXIT_CRITICAL(&pc_mux);}
+static void init_shared_styles(void)
+{
+    if(shared_styles_ready)return;
+    lv_style_init(&style_card);lv_style_set_bg_color(&style_card,col(CARD));lv_style_set_border_color(&style_card,col(EDGE));lv_style_set_border_width(&style_card,1);lv_style_set_radius(&style_card,18);lv_style_set_pad_all(&style_card,0);
+    lv_style_init(&style_button);lv_style_set_bg_color(&style_button,col(EDGE));lv_style_set_border_color(&style_button,col(EDGE));lv_style_set_border_width(&style_button,1);lv_style_set_radius(&style_button,10);lv_style_set_shadow_width(&style_button,0);lv_style_set_pad_all(&style_button,0);
+    shared_styles_ready=true;
+}
 static lv_obj_t *text(lv_obj_t *parent,int x,int y,const char *s,const lv_font_t *f,uint32_t color)
 {
     lv_obj_t *o=lv_label_create(parent);lv_label_set_text(o,s);lv_obj_set_pos(o,x,y);
@@ -80,9 +155,7 @@ static lv_obj_t *text(lv_obj_t *parent,int x,int y,const char *s,const lv_font_t
 static lv_obj_t *card(lv_obj_t *parent,int x,int y,int w,int h)
 {
     lv_obj_t *o=lv_obj_create(parent);lv_obj_set_pos(o,x,y);lv_obj_set_size(o,w,h);
-    lv_obj_set_style_bg_color(o,col(CARD),0);lv_obj_set_style_border_color(o,col(EDGE),0);
-    lv_obj_set_style_border_width(o,1,0);lv_obj_set_style_radius(o,18,0);
-    lv_obj_set_style_pad_all(o,0,0);lv_obj_remove_flag(o,LV_OBJ_FLAG_SCROLLABLE);return o;
+    lv_obj_add_style(o,&style_card,0);lv_obj_remove_flag(o,LV_OBJ_FLAG_SCROLLABLE);return o;
 }
 static lv_obj_t *gauge(lv_obj_t *parent,int x,int y,int size,const char *name,uint32_t color,lv_obj_t **value)
 {
@@ -133,7 +206,7 @@ static void update_top_navigation(void)
 static lv_obj_t *overview_shortcut_button(lv_obj_t *parent,int x,int y,int w,const char *caption,int page,uint32_t accent)
 {
     lv_obj_t *b=lv_button_create(parent);lv_obj_set_pos(b,x,y);lv_obj_set_size(b,w,42);
-    lv_obj_set_style_bg_color(b,col(EDGE),0);lv_obj_set_style_border_color(b,col(accent),0);lv_obj_set_style_border_width(b,1,0);lv_obj_set_style_radius(b,10,0);lv_obj_set_style_shadow_width(b,0,0);
+    lv_obj_add_style(b,&style_button,0);lv_obj_set_style_border_color(b,col(accent),0);
     lv_obj_t *l=text(b,0,0,caption,&lv_font_montserrat_12,INK);lv_obj_center(l);lv_obj_add_event_cb(b,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)page);return b;
 }
 static void overview_make_shortcut(lv_obj_t *o,int page,uint32_t accent)
@@ -143,7 +216,9 @@ static void overview_make_shortcut(lv_obj_t *o,int page,uint32_t accent)
 }
 static void screen_event(lv_event_t *e)
 {
-    touch_count++;opsdeck_screen_ui_open((opsdeck_screen_mode_t)(uintptr_t)lv_event_get_user_data(e));
+    touch_count++;opsdeck_screen_mode_t target=(opsdeck_screen_mode_t)(uintptr_t)lv_event_get_user_data(e);int64_t started=esp_timer_get_time();
+    opsdeck_screen_ui_open(target);
+    ESP_LOGI("opsdeck.ui","SCREEN_OPEN target=%d build_ms=%"PRId64" touch_events=%"PRIu32,(int)target,(esp_timer_get_time()-started)/1000,touch_count);
 }
 static void screen_shortcut(lv_obj_t *o,opsdeck_screen_mode_t target,uint32_t accent)
 {
@@ -151,7 +226,7 @@ static void screen_shortcut(lv_obj_t *o,opsdeck_screen_mode_t target,uint32_t ac
 }
 static lv_obj_t *screen_button(lv_obj_t *parent,int x,int y,int w,const char *caption,opsdeck_screen_mode_t target,uint32_t accent)
 {
-    lv_obj_t *b=lv_button_create(parent);lv_obj_set_pos(b,x,y);lv_obj_set_size(b,w,36);lv_obj_set_style_bg_color(b,col(EDGE),0);lv_obj_set_style_border_color(b,col(accent),0);lv_obj_set_style_border_width(b,1,0);lv_obj_set_style_radius(b,9,0);lv_obj_set_style_shadow_width(b,0,0);lv_obj_t *l=text(b,0,0,caption,&lv_font_montserrat_12,INK);lv_obj_center(l);lv_obj_add_event_cb(b,screen_event,LV_EVENT_CLICKED,(void*)(uintptr_t)target);return b;
+    lv_obj_t *b=lv_button_create(parent);lv_obj_set_pos(b,x,y);lv_obj_set_size(b,w,36);lv_obj_add_style(b,&style_button,0);lv_obj_set_style_border_color(b,col(accent),0);lv_obj_set_style_radius(b,9,0);lv_obj_t *l=text(b,0,0,caption,&lv_font_montserrat_12,INK);lv_obj_center(l);lv_obj_add_event_cb(b,screen_event,LV_EVENT_CLICKED,(void*)(uintptr_t)target);return b;
 }
 static lv_obj_t *meter(lv_obj_t *parent,int x,int y,int w,uint32_t color)
 {
@@ -196,7 +271,7 @@ static void pc_panel(lv_obj_t *parent,int x,int y,int w,int h,bool detailed)
         network=text(o,16,348,"NET RX -- / TX -- Mb/s",&lv_font_montserrat_12,MUTED);lv_obj_set_width(network,284);lv_label_set_long_mode(network,LV_LABEL_LONG_DOT);
         overview_net_chart=lv_chart_create(o);lv_obj_set_pos(overview_net_chart,16,367);lv_obj_set_size(overview_net_chart,284,39);
         lv_obj_set_style_bg_opa(overview_net_chart,LV_OPA_TRANSP,0);lv_obj_set_style_border_width(overview_net_chart,0,0);lv_obj_set_style_line_color(overview_net_chart,col(EDGE),LV_PART_MAIN);lv_obj_set_style_line_opa(overview_net_chart,LV_OPA_30,LV_PART_MAIN);lv_obj_set_style_size(overview_net_chart,0,0,LV_PART_INDICATOR);
-        lv_chart_set_type(overview_net_chart,LV_CHART_TYPE_LINE);lv_chart_set_point_count(overview_net_chart,60);lv_chart_set_range(overview_net_chart,LV_CHART_AXIS_PRIMARY_Y,0,10);overview_rx_series=lv_chart_add_series(overview_net_chart,col(CYAN),LV_CHART_AXIS_PRIMARY_Y);overview_tx_series=lv_chart_add_series(overview_net_chart,col(PURPLE),LV_CHART_AXIS_PRIMARY_Y);screen_shortcut(overview_net_chart,OPS_SCREEN_NETWORK,CYAN);draw_network();
+        lv_chart_set_type(overview_net_chart,LV_CHART_TYPE_LINE);lv_chart_set_point_count(overview_net_chart,60);lv_chart_set_range(overview_net_chart,LV_CHART_AXIS_PRIMARY_Y,0,10);overview_rx_series=lv_chart_add_series(overview_net_chart,col(CYAN),LV_CHART_AXIS_PRIMARY_Y);overview_tx_series=lv_chart_add_series(overview_net_chart,col(PURPLE),LV_CHART_AXIS_PRIMARY_Y);screen_shortcut(overview_net_chart,OPS_SCREEN_NETWORK,CYAN);
     }else{
         text(o,16,178,"RAM",&lv_font_montserrat_14,MUTED);ram_text=text(o,92,178,"-- / -- GiB",&lv_font_montserrat_14,INK);ram_bar=meter(o,16,198,w-32,CYAN);
         text(o,16,216,"NV MEM",&lv_font_montserrat_14,MUTED);vram_text=text(o,92,216,"-- / -- GiB",&lv_font_montserrat_14,INK);vram_bar=meter(o,16,236,w-32,PURPLE);
@@ -284,7 +359,11 @@ static uint32_t task_status_color(const opsdeck_status_t *s,bool fresh){
 static const char *link_action_name(int v){const char *n[]={"NONE","REOPEN","ROM PROBE"};return n[(v>=0&&v<=2)?v:0];}
 static const char *link_reason_name(int v){const char *n[]={"NONE","DEVICE SILENT","FORWARD STALL"};return n[(v>=0&&v<=2)?v:0];}
 static void refresh_providers(int64_t now){
- opsdeck_status_t s;opsdeck_status_copy(&s);int age=s.received_us?(int)((now-s.received_us)/1000000):999999;
+ opsdeck_status_t s;opsdeck_status_copy(&s);int second=(int)(now/1000000);
+ static uint32_t rendered_sequence=UINT32_MAX;static int rendered_second=-1,rendered_page=-1,rendered_cloud=-1;
+ if(s.sequence==rendered_sequence&&second==rendered_second&&current_page==rendered_page&&cloud_selection==rendered_cloud)return;
+ rendered_sequence=s.sequence;rendered_second=second;rendered_page=current_page;rendered_cloud=cloud_selection;
+ int age=s.received_us?(int)((now-s.received_us)/1000000):999999;
  bool fresh=s.received_us&&age<16;char b[128];
  int st[3]={s.bridge_state,s.codex_state,s.rdc_present?s.rdc_state:0};
  for(int i=0;i<3;i++)if(agent_value[i]){
@@ -440,24 +519,31 @@ static void cloud_select_event(lv_event_t *e)
 }
 static void show_page(int page)
 {
+    int64_t build_started=esp_timer_get_time();
     current_page=page;update_top_navigation();opsdeck_inventory_ui_clear();opsdeck_details_ui_clear();opsdeck_agent_ui_clear();
-    cpu_temp=disk_text=disk_scope=billing_period=billing_source=hosting_scope=NULL;
-    disk_detail[0]=disk_detail[1]=NULL;
-    intel_arc=intel_value=chassis_temp=intel_shared=fan_text=cloud_scope=cloud_health_badge=NULL;
-    for(int i=0;i<3;i++){cloud_buttons[i]=cloud_button_labels[i]=NULL;}for(int i=0;i<5;i++)cloud_account_health[i]=NULL;
-    cpu_arc=gpu_arc=cpu_value=gpu_value=gpu_temp=NULL;
-    ram_bar=vram_bar=ram_text=vram_text=network=chart=overview_net_chart=device_heap=NULL;
-    ram_arc=vram_arc=shared_arc=ram_gauge_value=vram_gauge_value=shared_gauge_value=NULL;fan1_rpm_text=fan2_rpm_text=NULL;
-    fan1_arc=fan2_arc=disk_arc=fan1_value=fan2_value=disk_gauge_value=NULL;
-    rx_series=tx_series=overview_rx_series=overview_tx_series=NULL;last_sequence=UINT32_MAX;
-    lv_obj_clean(body);chart_scale=NULL;chart_ceiling=10;provider_summary=NULL;codex_quota_bar=codex_quota_text=codex_quota_reset_text=codex_spark_bar=codex_spark_text=codex_spark_reset_text=NULL;task_summary=task_detail=task_detail2=task_age=NULL;link_state_text=link_counts=link_last=settings_sd=settings_transport=settings_wifi=NULL;
-    for(int i=0;i<3;i++){agent_value[i]=agent_note[i]=NULL;}for(int i=0;i<5;i++){cloud_value[i]=cloud_note[i]=NULL;}
+    last_sequence=UINT32_MAX;
+    if(page==0&&home_cached&&home_root){
+        if(dynamic_root){lv_obj_delete(dynamic_root);dynamic_root=NULL;}
+        clear_page_refs();restore_home_refs();lv_obj_remove_flag(home_root,LV_OBJ_FLAG_HIDDEN);
+        ESP_LOGI("opsdeck.ui","PAGE index=%d touch_events=%"PRIu32" build_ms=%"PRId64" cached=1",page,touch_count,(esp_timer_get_time()-build_started)/1000);
+        return;
+    }
+    if(home_root)lv_obj_add_flag(home_root,LV_OBJ_FLAG_HIDDEN);
+    if(dynamic_root){lv_obj_delete(dynamic_root);dynamic_root=NULL;}
+    clear_page_refs();
+    lv_obj_t *page_parent=NULL;
+    if(page==0){
+        home_root=lv_obj_create(body);lv_obj_remove_style_all(home_root);lv_obj_set_pos(home_root,0,0);lv_obj_set_size(home_root,776,414);lv_obj_remove_flag(home_root,LV_OBJ_FLAG_SCROLLABLE);page_parent=home_root;
+    }else{
+        dynamic_root=lv_obj_create(body);lv_obj_remove_style_all(dynamic_root);lv_obj_set_pos(dynamic_root,0,0);lv_obj_set_size(dynamic_root,776,414);lv_obj_remove_flag(dynamic_root,LV_OBJ_FLAG_SCROLLABLE);page_parent=dynamic_root;
+    }
     if(page==0) {
-        pc_panel(body,0,0,316,414,false);
-        agent_panel(body,328,0,210,414,false);cloud_panel(body,550,0,226,414,true);
+        pc_panel(page_parent,0,0,316,414,false);
+        agent_panel(page_parent,328,0,210,414,false);cloud_panel(page_parent,550,0,226,414,true);
+        save_home_refs();home_cached=true;
     } else if(page==1) {
-        pc_panel(body,0,0,316,414,true);
-        lv_obj_t *o=card(body,328,0,448,414);
+        pc_panel(page_parent,0,0,316,414,true);
+        lv_obj_t *o=card(page_parent,328,0,448,414);
         text(o,18,16,"NETWORK / rolling history",&lv_font_montserrat_16,INK);
         lv_obj_t *tm=lv_button_create(o);lv_obj_set_pos(tm,286,10);lv_obj_set_size(tm,142,32);lv_obj_set_style_bg_color(tm,col(EDGE),0);lv_obj_set_style_border_color(tm,col(CYAN),0);lv_obj_set_style_border_width(tm,1,0);lv_obj_set_style_radius(tm,9,0);lv_obj_set_style_shadow_width(tm,0,0);lv_obj_add_event_cb(tm,process_manager_event,LV_EVENT_CLICKED,NULL);lv_obj_t *tml=text(tm,0,0,"TASK MANAGER",&lv_font_montserrat_12,INK);lv_obj_center(tml);
         chart=lv_chart_create(o);lv_obj_set_pos(chart,18,48);lv_obj_set_size(chart,408,116);
@@ -476,13 +562,12 @@ static void show_page(int page)
         for(int i=0;i<2;i++){disk_detail[i]=text(o,18,249+i*38,"Waiting for volume sample",&lv_font_montserrat_14,INK);lv_obj_set_width(disk_detail[i],408);lv_label_set_long_mode(disk_detail[i],LV_LABEL_LONG_WRAP);}
         screen_shortcut(chart,OPS_SCREEN_NETWORK,CYAN);
         screen_button(o,18,340,126,"HISTORY",OPS_SCREEN_HISTORY,CYAN);screen_button(o,151,340,126,"ALERTS",OPS_SCREEN_ALERTS,AMBER);screen_button(o,284,340,142,"TIMELINE",OPS_SCREEN_TIMELINE,PURPLE);
-        draw_network();
     } else if(page==2) {
-        agent_panel(body,0,0,330,414,true);
-        opsdeck_agent_ui_create(body,342,0,434,414);
+        agent_panel(page_parent,0,0,330,414,true);
+        opsdeck_agent_ui_create(page_parent,342,0,434,414);
     } else if(page==3) {
-        cloud_panel(body,0,0,330,414,false);
-        lv_obj_t *o=card(body,342,0,434,414);
+        cloud_panel(page_parent,0,0,330,414,false);
+        lv_obj_t *o=card(page_parent,342,0,434,414);
         text(o,18,18,LV_SYMBOL_WIFI "  CLOUDFLARE ACCOUNTS",&lv_font_montserrat_20,INK);
         const char *labels[]={"ALL","VetaKeep","Other Projects"};
         for(int i=0;i<3;i++){
@@ -506,18 +591,18 @@ static void show_page(int page)
         provider_summary=text(o,18,319,"Waiting for host",&lv_font_montserrat_14,MUTED);
         lv_obj_set_width(provider_summary,398);lv_label_set_long_mode(provider_summary,LV_LABEL_LONG_DOT);
     } else if(page==4) {
-        opsdeck_inventory_ui_create(body);
+        opsdeck_inventory_ui_create(page_parent);
     } else if(page==5) {
-        opsdeck_details_ui_create(body);
+        opsdeck_details_ui_create(page_parent);
     } else {
-        lv_obj_t *o=card(body,0,0,776,414);text(o,22,14,LV_SYMBOL_SETTINGS "  SETTINGS",&lv_font_montserrat_20,INK);
+        lv_obj_t *o=card(page_parent,0,0,776,414);text(o,22,14,LV_SYMBOL_SETTINGS "  SETTINGS",&lv_font_montserrat_20,INK);
         lv_obj_t *dev=card(o,16,48,356,116);screen_shortcut(dev,OPS_SCREEN_DEVICE,CYAN);text(dev,326,10,LV_SYMBOL_RIGHT,&lv_font_montserrat_14,CYAN);text(dev,14,12,"DEVICE",&lv_font_montserrat_16,CYAN);text(dev,14,39,"ESP32-S3 | 800 x 480 | RGB565",&lv_font_montserrat_14,INK);text(dev,14,63,"ESP-IDF 5.5.4 | LVGL 9.3.0",&lv_font_montserrat_12,MUTED);text(dev,14,83,hw.touch_ok?"GT911 touch ready":"Touch unavailable",&lv_font_montserrat_12,hw.touch_ok?GREEN:AMBER);device_heap=text(dev,14,99,"Heap: checking",&lv_font_montserrat_12,MUTED);
         lv_obj_t *storage=card(o,388,48,372,116);screen_shortcut(storage,OPS_SCREEN_SD,PURPLE);text(storage,342,10,LV_SYMBOL_RIGHT,&lv_font_montserrat_14,PURPLE);text(storage,14,12,"STORAGE",&lv_font_montserrat_16,PURPLE);settings_sd=text(storage,14,42,"SD: probing / no format",&lv_font_montserrat_12,MUTED);lv_obj_set_width(settings_sd,344);lv_label_set_long_mode(settings_sd,LV_LABEL_LONG_WRAP);text(storage,14,88,"Read-only mount | never auto-format",&lv_font_montserrat_12,MUTED);
         lv_obj_t *link=card(o,16,178,744,122);screen_shortcut(link,OPS_SCREEN_LINK,GREEN);text(link,714,10,LV_SYMBOL_RIGHT,&lv_font_montserrat_14,GREEN);text(link,14,10,"LINK & TRANSPORT",&lv_font_montserrat_16,GREEN);link_state_text=text(link,14,36,"LINK SETUP",&lv_font_montserrat_14,MUTED);link_counts=text(link,14,59,"REC -- | REOPEN -- | ROM -- | HOST --",&lv_font_montserrat_12,MUTED);link_last=text(link,14,79,"ACK -- | LAST NONE",&lv_font_montserrat_12,MUTED);settings_transport=text(link,14,99,"USB telemetry + agent control | waiting for host",&lv_font_montserrat_12,MUTED);lv_obj_t *link_labels[]={link_state_text,link_counts,link_last,settings_transport};for(int i=0;i<4;i++){lv_obj_set_width(link_labels[i],716);lv_label_set_long_mode(link_labels[i],LV_LABEL_LONG_DOT);}
         lv_obj_t *net=card(o,16,314,356,84);screen_shortcut(net,OPS_SCREEN_WIFI,CYAN);text(net,326,8,LV_SYMBOL_RIGHT,&lv_font_montserrat_14,CYAN);text(net,14,10,"NETWORK / WI-FI",&lv_font_montserrat_14,CYAN);settings_wifi=text(net,14,35,"Wi-Fi: checking",&lv_font_montserrat_12,MUTED);lv_obj_set_width(settings_wifi,322);lv_label_set_long_mode(settings_wifi,LV_LABEL_LONG_DOT);text(net,14,56,"USB remains primary/control transport",&lv_font_montserrat_12,INK);
         lv_obj_t *diag=card(o,388,314,372,84);text(diag,14,10,"DIAGNOSTICS",&lv_font_montserrat_14,PURPLE);screen_button(diag,10,38,106,"HISTORY",OPS_SCREEN_HISTORY,CYAN);screen_button(diag,124,38,106,"ALERTS",OPS_SCREEN_ALERTS,AMBER);screen_button(diag,238,38,122,"TIMELINE",OPS_SCREEN_TIMELINE,PURPLE);
     }
-    ESP_LOGI("opsdeck.ui","PAGE index=%d touch_events=%"PRIu32,page,touch_count);
+    ESP_LOGI("opsdeck.ui","PAGE index=%d touch_events=%"PRIu32" build_ms=%"PRId64" cached=0",page,touch_count,(esp_timer_get_time()-build_started)/1000);
 }
 static void arc_anim(void *o,int32_t v){lv_arc_set_value((lv_obj_t*)o,v);}
 static void arc_to(lv_obj_t *o,float target)
@@ -536,6 +621,10 @@ static void refresh(lv_timer_t *t)
     if(next_state!=source_state){source_state=next_state;
         ESP_LOGI("opsdeck.ui","SOURCE_STATE %s",live?"live":(s.received_us?"stale":"unavailable"));}
     char b[128];uint32_t secs=(uint32_t)(now/1000000);
+    refresh_providers(now);opsdeck_agent_ui_refresh(now);opsdeck_codex_session_ui_refresh(now);opsdeck_process_ui_refresh(now);opsdeck_screen_ui_refresh(now);collect_network(&s,live);opsdeck_inventory_ui_refresh(now);opsdeck_details_ui_refresh(now);
+    static uint32_t rendered_pc_sequence=UINT32_MAX,rendered_second=UINT32_MAX;static int rendered_page=-1;
+    if(s.sequence==rendered_pc_sequence&&secs==rendered_second&&current_page==rendered_page)return;
+    rendered_pc_sequence=s.sequence;rendered_second=secs;rendered_page=current_page;
     snprintf(b,sizeof(b),"UP %02"PRIu32":%02"PRIu32":%02"PRIu32,secs/3600,(secs/60)%60,secs%60);lv_label_set_text(uptime,b);
     opsdeck_wifi_status_t transport;opsdeck_wifi_copy(&transport);bool wifi_live=live&&transport.telemetry_active;
     lv_label_set_text(badge,wifi_live?"WIFI LIVE":(live?"USB LIVE":(s.received_us?"STALE":"NO HOST")));
@@ -563,7 +652,6 @@ static void refresh(lv_timer_t *t)
         else snprintf(b,sizeof(b),"Not configured | tap to scan/setup");
         lv_label_set_text(settings_wifi,b);lv_obj_set_style_text_color(settings_wifi,col(wc),0);
     }
-    refresh_providers(now);opsdeck_agent_ui_refresh(now);opsdeck_codex_session_ui_refresh(now);opsdeck_process_ui_refresh(now);opsdeck_screen_ui_refresh(now);collect_network(&s,live);opsdeck_inventory_ui_refresh(now);opsdeck_details_ui_refresh(now);
     if(!cpu_arc) return;
     uint32_t cpu_c=live&&(s.valid&PC_CPU)?load_color(s.cpu,CYAN):MUTED;
     uint32_t intel_c=live&&(s.valid&PC_INTEL)?load_color(s.intel_gpu,GREEN):MUTED;
@@ -642,15 +730,15 @@ static void refresh(lv_timer_t *t)
 }
 void opsdeck_ui_init(const opsdeck_board_t *b)
 {
-    opsdeck_font_init();
+    opsdeck_font_init();init_shared_styles();
     hw=*b;lv_obj_t *s=lv_screen_active();lv_obj_set_style_bg_color(s,col(BG),0);
     lv_obj_remove_flag(s,LV_OBJ_FLAG_SCROLLABLE);
     top_brand=text(s,16,14,"ALAZ OPSDECK",&lv_font_montserrat_24,INK);lv_obj_add_flag(top_brand,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(top_brand,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     home_btn=lv_button_create(s);lv_obj_set_pos(home_btn,16,10);lv_obj_set_size(home_btn,116,36);lv_obj_set_style_bg_color(home_btn,col(CARD),0);lv_obj_set_style_border_color(home_btn,col(CYAN),0);lv_obj_set_style_border_width(home_btn,1,0);lv_obj_set_style_radius(home_btn,10,0);lv_obj_set_style_shadow_width(home_btn,0,0);lv_obj_add_event_cb(home_btn,top_home_event,LV_EVENT_CLICKED,NULL);lv_obj_t *hl=text(home_btn,0,0,LV_SYMBOL_HOME "  HOME",&lv_font_montserrat_14,INK);lv_obj_center(hl);lv_obj_add_flag(home_btn,LV_OBJ_FLAG_HIDDEN);
-    text(s,274,21,"M5.14-A / FAN CONTROL",&lv_font_montserrat_14,MUTED);
+    text(s,274,21,"M5.15-A / RESPONSIVE UI",&lv_font_montserrat_14,MUTED);
     uptime=text(s,508,20,"UP 00:00:00",&lv_font_montserrat_14,MUTED);
     badge=text(s,690,17,"NO HOST",&lv_font_montserrat_16,MUTED);lv_obj_add_flag(badge,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(badge,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     body=lv_obj_create(s);lv_obj_remove_style_all(body);lv_obj_set_pos(body,12,54);lv_obj_set_size(body,776,414);lv_obj_remove_flag(body,LV_OBJ_FLAG_SCROLLABLE);
-    show_page(0);lv_timer_create(refresh,250,NULL);
+    show_page(0);lv_timer_create(refresh,100,NULL);
     ESP_LOGI("opsdeck.ui","UI_READY brand=ALAZ_OPSDECK native_lvgl=9.3.0 size=800x480 controls=enabled session_center=1 tr_keyboard=1");
 }

@@ -27,7 +27,7 @@
 static lv_obj_t *root,*title,*live_value,*live_note,*age_label,*stats[3],*history_note,*legend_note,*chart,*row[7],*row_title[7],*row_text[7],*window_btn[4],*window_label[4],*metric_button,*metric_label,*variant_btn[2],*variant_label[2];
 static lv_obj_t *wifi_state_label,*wifi_ssid_label,*wifi_ip_label,*wifi_host_label,*wifi_scan_btn,*wifi_config_btn,*wifi_connect_btn,*wifi_forget_btn,*wifi_ap_btn[OPSDECK_WIFI_SCAN_MAX],*wifi_ap_label[OPSDECK_WIFI_SCAN_MAX];
 static lv_obj_t *wifi_composer,*wifi_ssid_ta,*wifi_pass_ta,*wifi_kb,*wifi_comp_note;static lv_obj_t *fan_control_btn[3],*fan_control_label[3];
-static lv_chart_series_t *series_a,*series_b,*series_c;static opsdeck_screen_mode_t mode;static int window_index=1,history_metric=0,history_variant=0;static uint32_t last_ops_sequence=UINT32_MAX;static int64_t last_request_us;static int fan_control_request=1,fan_control_pending_mode;static int64_t fan_control_pending_us;
+static lv_chart_series_t *series_a,*series_b,*series_c;static opsdeck_screen_mode_t mode;static int window_index=1,history_metric=0,history_variant=0;static uint32_t last_ops_sequence=UINT32_MAX,last_live_pc_sequence=UINT32_MAX,last_local_pc_sequence=UINT32_MAX,last_wifi_sequence=UINT32_MAX;static int64_t last_request_us,last_live_second=-1,last_local_second=-1,last_wifi_second=-1;static int last_live_id=-1,last_live_pending=-1,last_local_mode=-1;static int fan_control_request=1,fan_control_pending_mode;static int64_t fan_control_pending_us;
 static lv_color_t color(uint32_t v){return lv_color_hex(v);}
 static lv_obj_t *label(lv_obj_t *p,int x,int y,int w,const char *s,const lv_font_t *font,uint32_t c)
 {
@@ -128,7 +128,7 @@ static void fan_control_event(lv_event_t *e)
 bool opsdeck_screen_ui_is_open(void){return root!=NULL;}
 void opsdeck_screen_ui_close(void)
 {
-    wifi_composer_close();if(root){lv_obj_delete_async(root);root=NULL;}title=live_value=live_note=age_label=history_note=legend_note=chart=metric_button=metric_label=NULL;series_a=series_b=series_c=NULL;for(int i=0;i<2;i++)variant_btn[i]=variant_label[i]=NULL;for(int i=0;i<3;i++)fan_control_btn[i]=fan_control_label[i]=NULL;for(int i=0;i<7;i++)row[i]=row_title[i]=row_text[i]=NULL;
+    wifi_composer_close();if(root){lv_obj_delete_async(root);root=NULL;}title=live_value=live_note=age_label=history_note=legend_note=chart=metric_button=metric_label=NULL;series_a=series_b=series_c=NULL;for(int i=0;i<2;i++)variant_btn[i]=variant_label[i]=NULL;for(int i=0;i<3;i++)fan_control_btn[i]=fan_control_label[i]=NULL;for(int i=0;i<7;i++)row[i]=row_title[i]=row_text[i]=NULL;last_live_pc_sequence=UINT32_MAX;last_local_pc_sequence=UINT32_MAX;last_wifi_sequence=UINT32_MAX;last_live_second=last_local_second=last_wifi_second=-1;last_live_id=last_live_pending=last_local_mode=-1;
     wifi_state_label=wifi_ssid_label=wifi_ip_label=wifi_host_label=wifi_scan_btn=wifi_config_btn=wifi_connect_btn=wifi_forget_btn=NULL;for(int i=0;i<OPSDECK_WIFI_SCAN_MAX;i++)wifi_ap_btn[i]=wifi_ap_label[i]=NULL;opsdeck_opsview_deactivate();
 }
 void opsdeck_screen_ui_open(opsdeck_screen_mode_t next)
@@ -166,7 +166,7 @@ void opsdeck_screen_ui_open(opsdeck_screen_mode_t next)
 static void update_live(int64_t now)
 {
     if(!live_value)return;
-    opsdeck_pc_t p;opsdeck_pc_copy(&p);bool live=p.received_us>0&&now-p.received_us<5000000;int id=history_id();char b[128],n[160];
+    opsdeck_pc_t p;opsdeck_pc_copy(&p);bool live=p.received_us>0&&now-p.received_us<5000000;int id=history_id();int64_t second=now/1000000;if(p.sequence==last_live_pc_sequence&&second==last_live_second&&id==last_live_id&&fan_control_pending_mode==last_live_pending)return;last_live_pc_sequence=p.sequence;last_live_second=second;last_live_id=id;last_live_pending=fan_control_pending_mode;char b[128],n[160];
     int age=p.received_us?(int)((now-p.received_us)/1000000):-1;if(live)snprintf(b,sizeof(b),"LIVE | %ds",age);else if(age>=0)snprintf(b,sizeof(b),"STALE | %ds",age);else snprintf(b,sizeof(b),"NO DATA");lv_label_set_text(age_label,b);lv_obj_set_style_text_color(age_label,color(live?GREEN:MUTED),0);
     snprintf(b,sizeof(b),"--");snprintf(n,sizeof(n),"Waiting for live sample");
     if(id==0&&(p.valid&PC_CPU)){snprintf(b,sizeof(b),"%.0f%%",(double)p.cpu);if(p.valid&PC_CPU_TEMP)snprintf(n,sizeof(n),"CPU temp %.0f C",(double)p.cpu_temp);}
@@ -314,8 +314,8 @@ static void render_timeline(const opsdeck_opsview_t *s)
 void opsdeck_screen_ui_refresh(int64_t now)
 {
     if(!root)return;
-    if(mode==OPS_SCREEN_WIFI){render_wifi(now);return;}
-    if(local_mode()){render_local(now);return;}
+    if(mode==OPS_SCREEN_WIFI){opsdeck_wifi_status_t w;opsdeck_wifi_copy(&w);int64_t second=now/1000000;if(w.sequence==last_wifi_sequence&&second==last_wifi_second)return;last_wifi_sequence=w.sequence;last_wifi_second=second;render_wifi(now);return;}
+    if(local_mode()){opsdeck_pc_t p;opsdeck_pc_copy(&p);int64_t second=now/1000000;if(p.sequence==last_local_pc_sequence&&second==last_local_second&&last_local_mode==(int)mode)return;last_local_pc_sequence=p.sequence;last_local_second=second;last_local_mode=(int)mode;render_local(now);return;}
     if(now-last_request_us>10000000){opsdeck_opsview_request_current();last_request_us=now;}
     if(mode!=OPS_SCREEN_ALERTS&&mode!=OPS_SCREEN_TIMELINE)update_live(now);
     opsdeck_opsview_t s;opsdeck_opsview_copy(&s,NULL);int age=s.present?(int)((now-s.received_us)/1000000):-1;char b[64];
