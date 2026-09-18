@@ -7,7 +7,7 @@
 #include "freertos/FreeRTOS.h"
 static portMUX_TYPE mux=portMUX_INITIALIZER_UNLOCKED;
 static opsdeck_details_t latest;
-static opsdeck_details_query_t query={.slot=0,.kind=0,.page=0,.request_id=1};
+static opsdeck_details_query_t query={.slot=0,.kind=0,.page=0,.request_id=1,.group="all"};
 static uint32_t sequence;
 static bool active;
 static bool unique(const cJSON *o,int depth)
@@ -51,6 +51,13 @@ static bool hex(const char *s,size_t n)
     for(size_t i=0;i<n;i++)if(!((s[i]>='0'&&s[i]<='9')||(s[i]>='a'&&s[i]<='f')))return false;
     return true;
 }
+static bool group_valid(const char *s){return !strcmp(s,"all")||hex(s,16);}
+static bool project_valid(const char *s)
+{
+    size_t n=strlen(s);if(!n||n>=49)return false;
+    for(size_t i=0;i<n;i++){unsigned char c=(unsigned char)s[i];if(c<32||c>126)return false;}
+    return true;
+}
 void opsdeck_details_copy(opsdeck_details_t *s,opsdeck_details_query_t *q)
 {
     portENTER_CRITICAL(&mux);if(s)*s=latest;if(q)*q=query;portEXIT_CRITICAL(&mux);
@@ -63,13 +70,26 @@ void opsdeck_details_request_current(void)
 {
     opsdeck_details_query_t q;bool enabled;
     portENTER_CRITICAL(&mux);q=query;enabled=active;portEXIT_CRITICAL(&mux);
-    if(enabled)ESP_LOGI("opsdeck.ui","DETAILS_REQUEST slot=%d kind=%d page=%d request=%d",q.slot,q.kind,q.page,q.request_id);
+    if(enabled){
+        if(strcmp(q.group,"all"))ESP_LOGI("opsdeck.ui","DETAILS_REQUEST slot=%d kind=%d page=%d group=%s request=%d",q.slot,q.kind,q.page,q.group,q.request_id);
+        else ESP_LOGI("opsdeck.ui","DETAILS_REQUEST slot=%d kind=%d page=%d request=%d",q.slot,q.kind,q.page,q.request_id);
+    }
 }
 void opsdeck_details_select(int slot,int kind,int page)
 {
     if(slot<0||slot>1||kind<0||kind>=OPSDECK_DETAILS_KINDS||page<0||page>1023)return;
     portENTER_CRITICAL(&mux);
-    query=(opsdeck_details_query_t){slot,kind,page,query.request_id==INT_MAX?1:query.request_id+1};
+    int request=query.request_id==INT_MAX?1:query.request_id+1;
+    memset(&query,0,sizeof(query));query.slot=slot;query.kind=kind;query.page=page;query.request_id=request;strcpy(query.group,"all");
+    active=true;memset(&latest,0,sizeof(latest));portEXIT_CRITICAL(&mux);
+    opsdeck_details_request_current();
+}
+void opsdeck_details_select_project(int slot,int kind,int page,const char *group,const char *project)
+{
+    if(slot<0||slot>1||kind<0||kind>2||page<0||page>1023||!group||!project||!hex(group,16)||!project_valid(project))return;
+    portENTER_CRITICAL(&mux);
+    int request=query.request_id==INT_MAX?1:query.request_id+1;
+    memset(&query,0,sizeof(query));query.slot=slot;query.kind=kind;query.page=page;query.request_id=request;strcpy(query.group,group);strcpy(query.project,project);
     active=true;memset(&latest,0,sizeof(latest));portEXIT_CRITICAL(&mux);
     opsdeck_details_request_current();
 }
@@ -82,6 +102,9 @@ bool opsdeck_details_accept(const cJSON *o)
     if(!integer(o,"slot",0,1,&s.slot)||!integer(o,"kind",0,5,&s.kind)||!integer(o,"requested_page",0,1023,&s.requested_page)||
        !integer(o,"page",0,1023,&s.page)||!integer(o,"total_pages",0,1024,&s.total_pages)||!integer(o,"request_id",1,INT_MAX,&s.request_id)||
        !integer(o,"state",0,6,&s.state)||!integer(o,"age_s",-1,INT_MAX,&s.age_s))return false;
+    const cJSON *group=cJSON_GetObjectItemCaseSensitive(o,"group");
+    if(!group||cJSON_IsNull(group))strcpy(s.group,"all");
+    else if(!ascii(o,"group",s.group,sizeof(s.group))||!group_valid(s.group))return false;
     if(!ascii(o,"generation",s.generation,sizeof(s.generation))||!hex(s.generation,8)||
        !ascii(o,"key",s.key,sizeof(s.key))||!hex(s.key,16)||!ascii(o,"account_name",s.account_name,sizeof(s.account_name))||
        !ascii(o,"title",s.title,sizeof(s.title))||!ascii(o,"scope",s.scope,sizeof(s.scope))||!ascii(o,"note",s.note,sizeof(s.note))||
@@ -105,8 +128,8 @@ bool opsdeck_details_accept(const cJSON *o)
     }
     s.present=true;s.received_us=esp_timer_get_time();
     portENTER_CRITICAL(&mux);
-    bool match=active&&s.slot==query.slot&&s.kind==query.kind&&s.requested_page==query.page&&s.request_id==query.request_id;
+    bool match=active&&s.slot==query.slot&&s.kind==query.kind&&s.requested_page==query.page&&s.request_id==query.request_id&&!strcmp(s.group,query.group);
     if(match){s.sequence=++sequence;latest=s;}portEXIT_CRITICAL(&mux);
-    if(match)ESP_LOGI("opsdeck","DETAILS_RX request=%d slot=%d kind=%d page=%d rows=%d state=%d test=%d",s.request_id,s.slot,s.kind,s.page,s.row_count,s.state,s.test);
+    if(match)ESP_LOGI("opsdeck","DETAILS_RX request=%d slot=%d kind=%d page=%d group=%s rows=%d state=%d test=%d",s.request_id,s.slot,s.kind,s.page,s.group,s.row_count,s.state,s.test);
     return match;
 }

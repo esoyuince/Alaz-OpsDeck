@@ -9,7 +9,7 @@ ui=(root/"firmware/panel/main/opsdeck_ui.c").read_text(encoding="utf-8")
 main=(root/"firmware/panel/main/main.c").read_text(encoding="utf-8")
 form=(root/"host/OpsDeck.Host/MainForm.cs").read_text(encoding="utf-8")
 checks={
-"versions":"M6.16-A / Cloud Cache" in form and 'version="M6.16-A"' in app and "BOOT version=M5.16-A" in main and "M5.16-A / CLOUD CACHE" in ui,
+"versions":"M6.17-B / Project Details" in form and 'version="M6.17-B"' in app and "BOOT version=M5.17-B" in main and "M5.17-B / PROJECT DETAILS" in ui,
 "optional-wire":"CloudPanelSummary? summary=null" in multi and "summary=summary?.Wire()" in multi,
 "cache-only-host":"queueCache" in summary and "analyticsHistoryCache" in summary and "Inventory.Sets" in summary and "CloudflareClient" not in summary and "ReadAiHistory(" not in summary,
 "serial-uses-summary":"CloudWire(profiles[i]" in app and "CloudSummary(account.Profile,now)" in summary,

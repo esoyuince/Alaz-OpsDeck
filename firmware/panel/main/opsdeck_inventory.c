@@ -10,6 +10,7 @@ static portMUX_TYPE inventory_mux=portMUX_INITIALIZER_UNLOCKED;
 static opsdeck_inventory_t latest;
 static opsdeck_inventory_query_t query={.slot=0,.view=0,.page=0,.request_id=1,.group="all"};
 static uint32_t sequence;
+static bool active;
 static bool integer(const cJSON *o,const char *name,int lo,int hi,int *out)
 {
     const cJSON *v=cJSON_GetObjectItemCaseSensitive(o,name);
@@ -44,14 +45,19 @@ void opsdeck_inventory_select(int slot,int view,int page,const char *group)
     opsdeck_inventory_query_t next={.slot=slot,.view=view,.page=page};strcpy(next.group,group);
     portENTER_CRITICAL(&inventory_mux);
     next.request_id=query.request_id==INT_MAX?1:query.request_id+1;
-    query=next;memset(&latest,0,sizeof(latest));
+    query=next;active=true;memset(&latest,0,sizeof(latest));
     portEXIT_CRITICAL(&inventory_mux);
     ESP_LOGI("opsdeck.ui","INVENTORY_REQUEST slot=%d view=%d page=%d group=%s request=%d",slot,view,page,group,next.request_id);
 }
+void opsdeck_inventory_deactivate(void)
+{
+    portENTER_CRITICAL(&inventory_mux);active=false;portEXIT_CRITICAL(&inventory_mux);
+}
 void opsdeck_inventory_request_current(void)
 {
-    opsdeck_inventory_query_t q;opsdeck_inventory_copy(NULL,&q);
-    ESP_LOGI("opsdeck.ui","INVENTORY_REQUEST slot=%d view=%d page=%d group=%s request=%d",q.slot,q.view,q.page,q.group,q.request_id);
+    opsdeck_inventory_query_t q;bool enabled;
+    portENTER_CRITICAL(&inventory_mux);q=query;enabled=active;portEXIT_CRITICAL(&inventory_mux);
+    if(enabled)ESP_LOGI("opsdeck.ui","INVENTORY_REQUEST slot=%d view=%d page=%d group=%s request=%d",q.slot,q.view,q.page,q.group,q.request_id);
 }
 bool opsdeck_inventory_accept(const cJSON *o)
 {
@@ -111,6 +117,9 @@ bool opsdeck_inventory_accept(const cJSON *o)
            !ascii(row,"label",s.rows[i].label,sizeof(s.rows[i].label))||!ascii(row,"detail",s.rows[i].detail,sizeof(s.rows[i].detail)))return false;
         const cJSON *health=cJSON_GetObjectItemCaseSensitive(row,"health");
         if(health){s.rows[i].health_present=true;if(!integer(row,"health",0,3,&s.rows[i].health))return false;}
+        const cJSON *kind=cJSON_GetObjectItemCaseSensitive(row,"kind");
+        if(kind&&!cJSON_IsNull(kind)){s.rows[i].kind_present=true;if(!integer(row,"kind",0,3,&s.rows[i].kind))return false;}
+        if(s.view==0&&s.rows[i].kind_present)return false;
         for(int j=0;j<i;j++)if(!strcmp(s.rows[i].key,s.rows[j].key))return false;
     }
     s.present=true;s.received_us=esp_timer_get_time();

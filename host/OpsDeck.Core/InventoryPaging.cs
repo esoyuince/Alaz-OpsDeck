@@ -22,7 +22,7 @@ public sealed record PanelInventoryRequest(int Slot=0,int View=0,int Page=0,stri
         try{q.Validate();request=q;return true;}catch(ArgumentException){return false;}
     }
 }
-public sealed record PanelInventoryRow(string Key,string Label,string Detail,int Health=0);
+public sealed record PanelInventoryRow(string Key,string Label,string Detail,int Health=0,int? Kind=null);
 public sealed record PanelInventoryPage(int Slot,int View,int RequestedPage,int Page,int TotalPages,int TotalRows,
     int KnownResources,int CompleteSources,int SourceCount,SourceState State,int AgeS,bool MapOk,
     string Group,string Scope,string AccountName,int RequestId,PanelInventoryRow[] Rows,int ProjectHealth=0,string ProjectHealthLabel="",
@@ -156,7 +156,7 @@ public static class InventoryPaging
                 ProjectResourceHealth? healthRow=null;if(healthEvidence!=null)healthEvidence.TryGetValue(row.Resource.Key,out healthRow);
                 int health=healthRow==null?0:(int)healthRow.Health;
                 string detail=healthEvidence==null?$"{row.Resource.Key.Kind}/{row.Resource.Key.Scope} | {project}":$"{ProjectHealthEngine.EvidenceLabel(row.Resource.Key,healthRow)} | {row.Resource.Key.Kind}/{row.Resource.Key.Scope} | {project}";
-                resultRows.Add(new(Hash(JsonSerializer.Serialize(row.Resource.Key,Json.Options)),Label(row.Resource.Name),Label(detail,96),health));
+                resultRows.Add(new(Hash(JsonSerializer.Serialize(row.Resource.Key,Json.Options)),Label(row.Resource.Name),Label(detail,96),health,(int)row.Resource.Key.Kind));
             }
         }
         return Result();

@@ -4,3 +4,4 @@
 void opsdeck_ui_init(const opsdeck_board_t *board);
 void opsdeck_pc_publish(const opsdeck_pc_t *sample);
 void opsdeck_pc_copy(opsdeck_pc_t *sample);
+void opsdeck_ui_open_project_detail(int slot,int kind,const char *group,const char *project);

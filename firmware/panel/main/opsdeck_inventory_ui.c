@@ -1,6 +1,7 @@
 #include "opsdeck_inventory_ui.h"
 #include "opsdeck_inventory.h"
 #include "opsdeck_cloud.h"
+#include "opsdeck_ui.h"
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
@@ -61,12 +62,14 @@ static void open_project(lv_event_t *e)
 {
     opsdeck_inventory_t s;opsdeck_inventory_query_t q;opsdeck_inventory_copy(&s,&q);
     int row=(int)(uintptr_t)lv_event_get_user_data(e);
-    if(!s.present||s.view!=0||row<0||row>=s.row_count)return;
-    opsdeck_inventory_select(q.slot,1,0,s.rows[row].key);
+    if(!s.present||row<0||row>=s.row_count)return;
+    if(s.view==0){opsdeck_inventory_select(q.slot,1,0,s.rows[row].key);return;}
+    if(s.view==1&&strcmp(q.group,"all")&&s.rows[row].kind_present&&s.rows[row].kind>=0&&s.rows[row].kind<=2)
+        opsdeck_ui_open_project_detail(q.slot,s.rows[row].kind,q.group,s.scope);
 }
 void opsdeck_inventory_ui_clear(void)
 {
-    title=NULL;last_render_sequence=UINT32_MAX;last_render_request=-1;last_render_second=-1; /* Deleted page refs are not read while title==NULL. */
+    title=NULL;opsdeck_inventory_deactivate();last_render_sequence=UINT32_MAX;last_render_request=-1;last_render_second=-1; /* Deleted page refs are not read while title==NULL. */
 }
 void opsdeck_inventory_ui_create(lv_obj_t *parent)
 {
@@ -123,7 +126,7 @@ void opsdeck_inventory_ui_refresh(int64_t now)
     else snprintf(b,sizeof(b),"%s | %s%d resources | %d/4 lists | inventory age %s",s.account_name,lower,s.total_rows,s.complete_sources,age);
     lv_label_set_text(coverage,b);lv_obj_set_style_text_color(coverage,color(stale?MUTED:INK),0);
     if(q.view==0)lv_label_set_text(footer,"Health: OK/PENDING/NO DATA/STALE/ATTENTION/ERROR | Pages = NO HEALTH DATA");
-    else if(strcmp(q.group,"all")&&s.project_summary_present){char health_age[24];age_text(health_age,sizeof(health_age),s.project_health_age_s);snprintf(b,sizeof(b),"Health oldest %s | inventory age %s | Pages = NO HEALTH DATA",health_age,age);lv_label_set_text(footer,b);}
+    else if(strcmp(q.group,"all")&&s.project_summary_present){char health_age[24];age_text(health_age,sizeof(health_age),s.project_health_age_s);snprintf(b,sizeof(b),"Tap Worker/D1/R2 for Details | health %s | Pages = NO HEALTH DATA",health_age);lv_label_set_text(footer,b);}
     else if(strcmp(q.group,"all"))lv_label_set_text(footer,"Project health uses Worker/D1/R2 only | Pages = NO HEALTH DATA");
     else lv_label_set_text(footer,"Resource health: PENDING/NO DATA/STALE/ATTENTION/ERROR/OK");
     for(int i=0;i<4;i++){
@@ -134,7 +137,9 @@ void opsdeck_inventory_ui_refresh(int64_t now)
             uint32_t hc=INK;if(s.rows[i].health_present)hc=s.rows[i].health==1?GOOD:s.rows[i].health==2?WARN:s.rows[i].health==3?BAD:MUTED;
             lv_obj_set_style_text_color(row_details[i],color(stale?MUTED:hc),0);
             lv_obj_set_style_opa(row_buttons[i],stale?LV_OPA_40:LV_OPA_COVER,0);
-            if(s.view==0)lv_obj_add_flag(row_buttons[i],LV_OBJ_FLAG_CLICKABLE);else lv_obj_remove_flag(row_buttons[i],LV_OBJ_FLAG_CLICKABLE);
+            bool detail=s.view==1&&strcmp(s.group,"all")&&s.rows[i].kind_present&&s.rows[i].kind>=0&&s.rows[i].kind<=2;
+            if(s.view==0||detail)lv_obj_add_flag(row_buttons[i],LV_OBJ_FLAG_CLICKABLE);else lv_obj_remove_flag(row_buttons[i],LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_style_border_color(row_buttons[i],color(detail?ACCENT:EDGE),0);
         }else lv_obj_add_flag(row_buttons[i],LV_OBJ_FLAG_HIDDEN);
     }
     if(s.present&&s.row_count>0)lv_obj_add_flag(empty,LV_OBJ_FLAG_HIDDEN);

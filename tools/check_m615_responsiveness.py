@@ -7,7 +7,7 @@ ui=(root/"firmware/panel/main/opsdeck_ui.c").read_text(encoding="utf-8")
 main=(root/"firmware/panel/main/main.c").read_text(encoding="utf-8")
 form=(root/"host/OpsDeck.Host/MainForm.cs").read_text(encoding="utf-8")
 checks={
-"versions":"M6.16-A / Cloud Cache" in form and 'version="M6.16-A"' in app and "BOOT version=M5.16-A" in main and "M5.16-A / CLOUD CACHE" in ui,
+"versions":"M6.17-B / Project Details" in form and 'version="M6.17-B"' in app and "BOOT version=M5.17-B" in main and "M5.17-B / PROJECT DETAILS" in ui,
 "no-fixed-serial-sleeps":all(x not in app for x in ["Task.Delay(160,stop.Token)","Task.Delay(150,stop.Token)","Task.Delay(120,stop.Token)","Task.Delay(70,stop.Token)"]),
 "rx-loop-fast":"Task.Delay(PanelSerialPacing.LoopDelayMs,stop.Token)" in app and "LoopDelayMs=5" in pacing,
 "wire-aware-gap":"GapMs(frame)" in app and "bytes*10_000L" in pacing and "MaxGapMs=300" in pacing,

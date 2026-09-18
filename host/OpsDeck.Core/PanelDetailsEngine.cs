@@ -9,6 +9,23 @@ public sealed record PanelDetailsSnapshot(IReadOnlyDictionary<ResourceKey,string
 public static class PanelDetailsProjection
 {
     private static bool Same(string a,string b)=>string.Equals(a,b,StringComparison.OrdinalIgnoreCase);
+    public static PanelDetailsSnapshot FilterProject(string account,string group,ResourceInventory inventory,
+        IReadOnlyDictionary<ResourceKey,string>? mappings,PanelDetailsSnapshot snapshot)
+    {
+        if(group=="all")return snapshot;
+        if(!System.Text.RegularExpressions.Regex.IsMatch(group,@"\A[a-f0-9]{16}\z"))throw new ArgumentException("Invalid project filter.");
+        if(mappings==null)throw new InvalidOperationException("Project map unavailable.");
+        var allowed=inventory.Items.Where(x=>Same(x.Key.AccountId,account))
+            .Where(x=>{string? project=null;mappings.TryGetValue(x.Key,out project);if(string.IsNullOrWhiteSpace(project))project=null;return InventoryPaging.GroupKey(project)==group;})
+            .Select(x=>x.Key).ToHashSet();
+        return snapshot with{
+            Names=snapshot.Names.Where(x=>allowed.Contains(x.Key)).ToDictionary(x=>x.Key,x=>x.Value),
+            Workers=snapshot.Workers.Where(x=>allowed.Contains(x.Key)).ToArray(),
+            D1=snapshot.D1.Where(x=>allowed.Contains(x.Key)).ToArray(),
+            R2=snapshot.R2.Where(x=>allowed.Contains(x.Key)).ToArray(),
+            Queues=[],QueueHistory=[],Ai=[]
+        };
+    }
     public static PanelDetailCard[] Cards(string account,int kind,PanelDetailsSnapshot s)
     {
         var cards=new List<PanelDetailCard>();
@@ -135,6 +152,11 @@ public sealed partial class AppEngine
                     queueCache.Values.Select(x=>x.Value).OfType<QueueBacklog>().ToArray(),
                     analyticsHistoryCache.Values.Select(x=>x.Value).OfType<QueueHistory>().ToArray(),
                     analyticsHistoryCache.Values.Select(x=>x.Value).OfType<AiHistory>().ToArray());
+            }
+            if(query.Group!="all")
+            {
+                try{snapshot=PanelDetailsProjection.FilterProject(profile.AccountId,query.Group,Inventory,Volatile.Read(ref panelMappings),snapshot);}
+                catch(InvalidOperationException){return PanelDetails.Empty(query,profile.Name,"Project map unavailable; filter was not widened",SourceState.Error);}
             }
             var page=PanelDetails.Build(query,profile.Name,PanelDetailsProjection.Cards(profile.AccountId,query.Kind,snapshot),now);
             _=page.Wire(generation); // Validate before publishing; catches invalid cached values.

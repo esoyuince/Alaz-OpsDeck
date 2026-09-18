@@ -7,19 +7,21 @@ using System.Text.RegularExpressions;
 namespace OpsDeck.Core;
 
 // Display navigation only. Never initiates an API request or OS action.
-public sealed record PanelDetailsRequest(int Slot=0,int Kind=0,int Page=0,int RequestId=1)
+public sealed record PanelDetailsRequest(int Slot=0,int Kind=0,int Page=0,int RequestId=1,string Group="all")
 {
     public void Validate()
     {
-        if(Slot is <0 or >1||Kind is <0 or >5||Page is <0 or >1023||RequestId<1)
+        if(Slot is <0 or >1||Kind is <0 or >5||Page is <0 or >1023||RequestId<1||
+            !Regex.IsMatch(Group,@"\A(all|[a-f0-9]{16})\z")||(Group!="all"&&Kind>2))
             throw new ArgumentException("Invalid panel details request.");
     }
     public static bool TryParse(string line,out PanelDetailsRequest? request)
     {
         request=null;if(line.Length>320)return false;
-        var m=Regex.Match(line,@"(?:\A| )opsdeck\.ui: DETAILS_REQUEST slot=([01]) kind=([0-5]) page=([0-9]{1,4}) request=([0-9]{1,10})\z",RegexOptions.CultureInvariant);
-        if(!m.Success||!int.TryParse(m.Groups[4].Value,out int id))return false;
-        var q=new PanelDetailsRequest(int.Parse(m.Groups[1].Value),int.Parse(m.Groups[2].Value),int.Parse(m.Groups[3].Value),id);
+        var m=Regex.Match(line,@"(?:\A| )opsdeck\.ui: DETAILS_REQUEST slot=([01]) kind=([0-5]) page=([0-9]{1,4})(?: group=(all|[a-f0-9]{16}))? request=([0-9]{1,10})\z",RegexOptions.CultureInvariant);
+        if(!m.Success||!int.TryParse(m.Groups[5].Value,out int id))return false;
+        string group=m.Groups[4].Success?m.Groups[4].Value:"all";
+        var q=new PanelDetailsRequest(int.Parse(m.Groups[1].Value),int.Parse(m.Groups[2].Value),int.Parse(m.Groups[3].Value),id,group);
         try{q.Validate();request=q;return true;}catch(ArgumentException){return false;}
     }
 }
@@ -44,7 +46,7 @@ public sealed record PanelDetailPage(PanelDetailsRequest Request,int Page,int To
         foreach(var row in Rows){PanelDetails.Text(row.Label,28);PanelDetails.Text(row.Unit,12);PanelDetails.Number(row.Value);}
         if(Rows.Select(x=>x.Label).Distinct(StringComparer.Ordinal).Count()!=Rows.Length)throw new ArgumentException("Duplicate metric labels.");
         string text=JsonSerializer.Serialize(new{type="opsdeck.details.v1",generation,test,slot=Request.Slot,kind=Request.Kind,
-            requested_page=Request.Page,page=Page,total_pages=TotalPages,request_id=Request.RequestId,
+            requested_page=Request.Page,page=Page,total_pages=TotalPages,request_id=Request.RequestId,group=Request.Group,
             account_name=AccountName,key=Key,title=Title,scope=Scope,note=Note,reason=Reason.Length>0?Reason:null,state=(int)State,age_s=AgeS,rows=Rows},Options);
         if(Encoding.UTF8.GetByteCount(text)>3000)throw new InvalidOperationException("Details UART budget exceeded.");
         return text;

@@ -6,6 +6,7 @@
 #include "opsdeck_money.h"
 #include "opsdeck_inventory_ui.h"
 #include "opsdeck_details_ui.h"
+#include "opsdeck_details.h"
 #include "opsdeck_agent_ui.h"
 #include "opsdeck_codex_session_ui.h"
 #include "opsdeck_process_ui.h"
@@ -33,6 +34,7 @@ static lv_obj_t *intel_arc,*intel_value,*chassis_temp,*intel_shared,*fan_text;
 static lv_obj_t *cpu_temp,*disk_text,*disk_detail[2],*disk_scope,*billing_period,*billing_source,*hosting_scope,*cloud_resource_summary,*cloud_queue_summary,*cloud_ai_summary,*cloud_gateway_summary;
 static lv_obj_t *cloud_buttons[3],*cloud_button_labels[3],*cloud_scope,*cloud_health_badge,*cloud_account_health[5];
 static int current_page,cloud_selection;
+static bool project_detail_pending;static int project_detail_slot,project_detail_kind;static char project_detail_group[17],project_detail_name[49];
 static void show_page(int page);
 static void draw_network(void);
 static void top_home_event(lv_event_t *e);
@@ -197,6 +199,13 @@ static void overview_page_event(lv_event_t *e)
 static void top_home_event(lv_event_t *e)
 {
     (void)e;touch_count++;show_page(0);
+}
+void opsdeck_ui_open_project_detail(int slot,int kind,const char *group,const char *project)
+{
+    if(slot<0||slot>1||kind<0||kind>2||!group||!project||strlen(group)!=16||strlen(project)==0||strlen(project)>=sizeof(project_detail_name))return;
+    project_detail_pending=true;project_detail_slot=slot;project_detail_kind=kind;strcpy(project_detail_group,group);strcpy(project_detail_name,project);
+    touch_count++;show_page(5);
+    ESP_LOGI("opsdeck.ui","PROJECT_DETAIL_OPEN slot=%d kind=%d group=%s touch_events=%"PRIu32,slot,kind,group,touch_count);
 }
 static void update_top_navigation(void)
 {
@@ -625,6 +634,11 @@ static void show_page(int page)
         opsdeck_inventory_ui_create(page_parent);
     } else if(page==5) {
         opsdeck_details_ui_create(page_parent);
+        if(project_detail_pending){
+            opsdeck_details_select_project(project_detail_slot,project_detail_kind,0,project_detail_group,project_detail_name);project_detail_pending=false;
+        }else{
+            opsdeck_details_query_t q;opsdeck_details_copy(NULL,&q);opsdeck_details_select(q.slot,q.kind,q.page);
+        }
     } else {
         lv_obj_t *o=card(page_parent,0,0,776,414);text(o,22,14,LV_SYMBOL_SETTINGS "  SETTINGS",&lv_font_montserrat_20,INK);
         lv_obj_t *dev=card(o,16,48,356,116);screen_shortcut(dev,OPS_SCREEN_DEVICE,CYAN);text(dev,326,10,LV_SYMBOL_RIGHT,&lv_font_montserrat_14,CYAN);text(dev,14,12,"DEVICE",&lv_font_montserrat_16,CYAN);text(dev,14,39,"ESP32-S3 | 800 x 480 | RGB565",&lv_font_montserrat_14,INK);text(dev,14,63,"ESP-IDF 5.5.4 | LVGL 9.3.0",&lv_font_montserrat_12,MUTED);text(dev,14,83,hw.touch_ok?"GT911 touch ready":"Touch unavailable",&lv_font_montserrat_12,hw.touch_ok?GREEN:AMBER);device_heap=text(dev,14,99,"Heap: checking",&lv_font_montserrat_12,MUTED);
@@ -766,7 +780,7 @@ void opsdeck_ui_init(const opsdeck_board_t *b)
     lv_obj_remove_flag(s,LV_OBJ_FLAG_SCROLLABLE);
     top_brand=text(s,16,14,"ALAZ OPSDECK",&lv_font_montserrat_24,INK);lv_obj_add_flag(top_brand,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(top_brand,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     home_btn=lv_button_create(s);lv_obj_set_pos(home_btn,16,10);lv_obj_set_size(home_btn,116,36);lv_obj_set_style_bg_color(home_btn,col(CARD),0);lv_obj_set_style_border_color(home_btn,col(CYAN),0);lv_obj_set_style_border_width(home_btn,1,0);lv_obj_set_style_radius(home_btn,10,0);lv_obj_set_style_shadow_width(home_btn,0,0);lv_obj_add_event_cb(home_btn,top_home_event,LV_EVENT_CLICKED,NULL);lv_obj_t *hl=text(home_btn,0,0,LV_SYMBOL_HOME "  HOME",&lv_font_montserrat_14,INK);lv_obj_center(hl);lv_obj_add_flag(home_btn,LV_OBJ_FLAG_HIDDEN);
-    text(s,274,21,"M5.16-A / CLOUD CACHE",&lv_font_montserrat_14,MUTED);
+    text(s,274,21,"M5.17-B / PROJECT DETAILS",&lv_font_montserrat_14,MUTED);
     uptime=text(s,508,20,"UP 00:00:00",&lv_font_montserrat_14,MUTED);
     badge=text(s,690,17,"NO HOST",&lv_font_montserrat_16,MUTED);lv_obj_add_flag(badge,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(badge,overview_page_event,LV_EVENT_CLICKED,(void*)(uintptr_t)6);
     body=lv_obj_create(s);lv_obj_remove_style_all(body);lv_obj_set_pos(body,12,54);lv_obj_set_size(body,776,414);lv_obj_remove_flag(body,LV_OBJ_FLAG_SCROLLABLE);

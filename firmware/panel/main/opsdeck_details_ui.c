@@ -37,9 +37,15 @@ static void navigate(lv_event_t *e)
 {
     opsdeck_details_t s;opsdeck_details_query_t q;opsdeck_details_copy(&s,&q);
     uintptr_t action=(uintptr_t)lv_event_get_user_data(e);
+    bool filtered=strcmp(q.group,"all")!=0&&q.project[0];
     if(action<2)opsdeck_details_select((int)action,q.kind,0);
-    else if(action==2)opsdeck_details_select(q.slot,(q.kind+1)%OPSDECK_DETAILS_KINDS,0);
-    else if(s.present){int page=s.page+(action==3?-1:1);if(page>=0&&page<s.total_pages)opsdeck_details_select(q.slot,q.kind,page);}
+    else if(action==2){
+        int kind=filtered?(q.kind+1)%3:(q.kind+1)%OPSDECK_DETAILS_KINDS;
+        if(filtered)opsdeck_details_select_project(q.slot,kind,0,q.group,q.project);else opsdeck_details_select(q.slot,kind,0);
+    }else if(s.present){
+        int page=s.page+(action==3?-1:1);
+        if(page>=0&&page<s.total_pages){if(filtered)opsdeck_details_select_project(q.slot,q.kind,page,q.group,q.project);else opsdeck_details_select(q.slot,q.kind,page);}
+    }
 }
 void opsdeck_details_ui_clear(void)
 {
@@ -62,7 +68,6 @@ void opsdeck_details_ui_create(lv_obj_t *parent)
     previous=button(parent,4,296,90,LV_SYMBOL_LEFT,navigate,3,NULL);
     next=button(parent,682,296,90,LV_SYMBOL_RIGHT,navigate,4,NULL);
     pages=label(parent,110,308,560,"-- / --",&lv_font_montserrat_14);lv_obj_set_style_text_align(pages,LV_TEXT_ALIGN_CENTER,0);
-    opsdeck_details_query_t q;opsdeck_details_copy(NULL,&q);opsdeck_details_select(q.slot,q.kind,q.page);
 }
 static void metric_text(char *value,size_t value_size,char *unit,size_t unit_size,const opsdeck_detail_metric_t *m)
 {
@@ -81,7 +86,8 @@ void opsdeck_details_ui_refresh(int64_t now)
     opsdeck_details_t s;opsdeck_details_query_t q;opsdeck_details_copy(&s,&q);
     if(last_sequence==s.sequence&&last_request==q.request_id&&last_second==now/1000000)return;
     last_sequence=s.sequence;last_request=q.request_id;last_second=now/1000000;
-    char text[200];snprintf(text,sizeof(text),"CATEGORY: %s  >",kinds[q.kind]);lv_label_set_text(category_label,text);
+    char text[200];bool filtered=strcmp(q.group,"all")!=0&&q.project[0];
+    if(filtered)snprintf(text,sizeof(text),"PROJECT / %s  >",kinds[q.kind]);else snprintf(text,sizeof(text),"CATEGORY: %s  >",kinds[q.kind]);lv_label_set_text(category_label,text);
     for(int i=0;i<2;i++)lv_obj_set_style_border_color(accounts[i],color(i==q.slot?0x44D7EE:0x23354C),0);
     if(s.present)lv_label_set_text(account_labels[q.slot],s.account_name);
     int64_t elapsed=s.present&&now>=s.received_us?(now-s.received_us)/1000000:0;
@@ -95,7 +101,8 @@ void opsdeck_details_ui_refresh(int64_t now)
     lv_label_set_text(age_label,text);
     lv_obj_set_style_text_color(title,color(s.test?0xFF9977:0xEDF5FF),0);
     lv_obj_set_style_text_color(age_label,color(stale||transport?0xFFBB66:0x8293AD),0);
-    lv_label_set_text(scope,s.present?s.scope:"Read-only host cache; refresh runs independently");
+    if(filtered){snprintf(text,sizeof(text),"Project: %s | %s",q.project,s.present?s.scope:"waiting for filtered host cache");lv_label_set_text(scope,text);}
+    else lv_label_set_text(scope,s.present?s.scope:"Read-only host cache; refresh runs independently");
     if(s.present&&s.reason[0]&&(s.state!=1||stale))snprintf(text,sizeof(text),"Reason: %s",s.reason);else snprintf(text,sizeof(text),"%s",s.present?s.note:"Panel navigation never triggers API reads or commands");
     lv_label_set_text(note,text);
     for(int i=0;i<4;i++){
@@ -107,7 +114,7 @@ void opsdeck_details_ui_refresh(int64_t now)
         lv_label_set_text(metric_values[i],text);
         lv_obj_set_style_text_color(metric_values[i],color(stale||transport?0x8293AD:0xEDF5FF),0);
     }
-    if(s.present&&s.total_pages)snprintf(text,sizeof(text),"Card %d / %d | %s",s.page+1,s.total_pages,kinds[q.kind]);else snprintf(text,sizeof(text),"-- / -- | %s",kinds[q.kind]);
+    if(s.present&&s.total_pages)snprintf(text,sizeof(text),"Card %d / %d | %s%s",s.page+1,s.total_pages,kinds[q.kind],filtered?" | PROJECT FILTER":"");else snprintf(text,sizeof(text),"-- / -- | %s%s",kinds[q.kind],filtered?" | PROJECT FILTER":"");
     lv_label_set_text(pages,text);
     if(!s.present||s.page<=0)lv_obj_add_state(previous,LV_STATE_DISABLED);else lv_obj_remove_state(previous,LV_STATE_DISABLED);
     if(!s.present||s.page+1>=s.total_pages)lv_obj_add_state(next,LV_STATE_DISABLED);else lv_obj_remove_state(next,LV_STATE_DISABLED);
