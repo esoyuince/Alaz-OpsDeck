@@ -118,10 +118,14 @@ void opsdeck_inventory_ui_refresh(int64_t now)
     if(!s.present)snprintf(b,sizeof(b),"No matching response yet. Counts are unknown.");
     else if(s.known_resources<0)snprintf(b,sizeof(b),"%s | inventory counts unknown | %d/4 lists",s.account_name,s.complete_sources);
     else if(q.view==0)snprintf(b,sizeof(b),"%s | %s%d %s | %s%d resources | %d/4 lists | age %s",s.account_name,lower,s.total_rows,s.total_rows==1?"group":"groups",lower,s.known_resources,s.complete_sources,age);
-    else if(strcmp(q.group,"all"))snprintf(b,sizeof(b),"%s | %s%d project resources | %d/4 account lists | age %s",s.account_name,lower,s.total_rows,s.complete_sources,age);
-    else snprintf(b,sizeof(b),"%s | %s%d resources | %d/4 lists | age %s",s.account_name,lower,s.total_rows,s.complete_sources,age);
+    else if(strcmp(q.group,"all")&&s.project_summary_present)snprintf(b,sizeof(b),"W:%d D1:%d R2:%d P:%d | OK:%d ATT:%d DEG:%d UNK:%d",s.project_workers,s.project_d1,s.project_r2,s.project_pages,s.project_ok,s.project_attention,s.project_degraded,s.project_unknown);
+    else if(strcmp(q.group,"all"))snprintf(b,sizeof(b),"%s | %s%d project resources | %d/4 account lists | inventory age %s",s.account_name,lower,s.total_rows,s.complete_sources,age);
+    else snprintf(b,sizeof(b),"%s | %s%d resources | %d/4 lists | inventory age %s",s.account_name,lower,s.total_rows,s.complete_sources,age);
     lv_label_set_text(coverage,b);lv_obj_set_style_text_color(coverage,color(stale?MUTED:INK),0);
-    lv_label_set_text(footer,q.view==0?"Health: OK/PENDING/NO DATA/STALE/ATTENTION/ERROR | Pages = NO HEALTH DATA":strcmp(q.group,"all")?"Project health uses Worker/D1/R2 only | Pages = NO HEALTH DATA":"Resource health: PENDING/NO DATA/STALE/ATTENTION/ERROR/OK");
+    if(q.view==0)lv_label_set_text(footer,"Health: OK/PENDING/NO DATA/STALE/ATTENTION/ERROR | Pages = NO HEALTH DATA");
+    else if(strcmp(q.group,"all")&&s.project_summary_present){char health_age[24];age_text(health_age,sizeof(health_age),s.project_health_age_s);snprintf(b,sizeof(b),"Health oldest %s | inventory age %s | Pages = NO HEALTH DATA",health_age,age);lv_label_set_text(footer,b);}
+    else if(strcmp(q.group,"all"))lv_label_set_text(footer,"Project health uses Worker/D1/R2 only | Pages = NO HEALTH DATA");
+    else lv_label_set_text(footer,"Resource health: PENDING/NO DATA/STALE/ATTENTION/ERROR/OK");
     for(int i=0;i<4;i++){
         bool visible=s.present&&i<s.row_count;
         if(visible){

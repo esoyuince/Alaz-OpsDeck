@@ -50,12 +50,18 @@ public static class M59ProjectHealthTests
         C("project-row-health",projectA.Health==(int)ProjectHealthState.Attention&&projectA.Detail.StartsWith("ATTENTION |"));
         var selected=InventoryPaging.Build(inv,map,profile,new(0,1,0,projectA.Key,3),now,evidence);
         C("selected-health",selected.ProjectHealth==(int)ProjectHealthState.Attention&&selected.ProjectHealthLabel=="ATTENTION"&&selected.Rows.Length==3);
+        C("selected-summary-counts",selected.ProjectWorkers==1&&selected.ProjectD1==1&&selected.ProjectR2==0&&selected.ProjectPages==1&&
+            selected.ProjectOk==1&&selected.ProjectAttention==1&&selected.ProjectDegraded==0&&selected.ProjectUnknown==0);
+        C("selected-health-age",selected.ProjectHealthAgeS==30&&ProjectHealthEngine.OldestEvidenceAgeSeconds([wk,dk,pk],evidence,now)==30);
         C("pages-no-health-data",selected.Rows.Single(x=>x.Label=="Site").Health==(int)ProjectHealthState.Unknown&&selected.Rows.Single(x=>x.Label=="Site").Detail.StartsWith("NO HEALTH DATA |"));
         var all=InventoryPaging.Build(inv,map,profile,new(0,1,0,"all",4),now,evidence);
         C("resource-health",all.Rows.Single(x=>x.Label=="Files").Health==(int)ProjectHealthState.Ok&&all.Rows.Single(x=>x.Label=="Files").Detail.StartsWith("OK |"));
         string wire=projects.Wire("1234abcd");using var doc=JsonDocument.Parse(wire);
         C("wire-project-health",doc.RootElement.GetProperty("project_health").GetInt32()==0&&doc.RootElement.GetProperty("rows")[0].TryGetProperty("health",out _));
-        C("wire-budget",System.Text.Encoding.UTF8.GetByteCount(wire)<=3000);
+        string selectedWire=selected.Wire("1234abcd");using var selectedDoc=JsonDocument.Parse(selectedWire);
+        C("wire-project-summary",selectedDoc.RootElement.GetProperty("project_workers").GetInt32()==1&&selectedDoc.RootElement.GetProperty("project_pages").GetInt32()==1&&
+            selectedDoc.RootElement.GetProperty("project_attention").GetInt32()==1&&selectedDoc.RootElement.GetProperty("project_health_age_s").GetInt32()==30);
+        C("wire-budget",System.Text.Encoding.UTF8.GetByteCount(selectedWire)<=3000);
         try{ProjectHealthEngine.Evidence(wk,SourceState.Ok,now.AddMinutes(1),now,"future");C("future-rejected",false);}catch(InvalidDataException){C("future-rejected",true);}
     }
 }

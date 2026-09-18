@@ -76,6 +76,8 @@ tools/*
 !tools/safe_flash_panel.py
 !tools/configure_opsdeck_firewall.ps1
 !tools/check_cloud_ui_m513f.py
+!tools/check_inventory_ui_m513g.py
+!tools/check_projects_v2_m513h.py
 !tools/check_m610_network_perf.py
 !tools/check_m611b_tls_perf.py
 !tools/check_m612_tls.py

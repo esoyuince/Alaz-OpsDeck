@@ -48,6 +48,15 @@ public static class ProjectHealthEngine
         if(error)return "ERROR";if(attention)return "ATTENTION";if(stale)return "STALE";
         if(pending)return "PENDING";if(noData)return "NO DATA";return "OK";
     }
+    public static int OldestEvidenceAgeSeconds(IEnumerable<ResourceKey> resources,IReadOnlyDictionary<ResourceKey,ProjectResourceHealth>? evidence,DateTimeOffset now)
+    {
+        if(evidence==null)return -1;
+        var times=resources.Distinct().Where(SupportsResourceHealth)
+            .Select(k=>evidence.TryGetValue(k,out var found)?found.CollectedAt:null).Where(x=>x.HasValue).Select(x=>x!.Value).ToArray();
+        if(times.Length==0)return -1;
+        if(times.Any(x=>x>now.AddSeconds(5)))throw new InvalidDataException("Project health evidence timestamp is in the future.");
+        return (int)Math.Clamp(Math.Floor((now-times.Min()).TotalSeconds),0,int.MaxValue);
+    }
     public const int EvidenceTtlSeconds=180;
     public static ProjectResourceHealth Evidence(ResourceKey key,SourceState state,DateTimeOffset at,DateTimeOffset now,string basis)
     {

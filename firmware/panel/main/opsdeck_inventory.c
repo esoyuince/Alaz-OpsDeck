@@ -76,7 +76,23 @@ bool opsdeck_inventory_accept(const cJSON *o)
     if(!ascii(o,"generation",s.generation,sizeof(s.generation))||!hex(s.generation,8)||
        !ascii(o,"group",s.group,sizeof(s.group))||!group_valid(s.group)||
        !ascii(o,"scope",s.scope,sizeof(s.scope))||!ascii(o,"account_name",s.account_name,sizeof(s.account_name)))return false;
+    const char *summary_names[]={"project_workers","project_d1","project_r2","project_pages","project_ok","project_attention","project_degraded","project_unknown","project_health_age_s"};
+    int present_summary=0;for(size_t i=0;i<sizeof(summary_names)/sizeof(summary_names[0]);i++)if(cJSON_GetObjectItemCaseSensitive(o,summary_names[i]))present_summary++;
+    if(present_summary!=0&&present_summary!=9)return false;
+    if(present_summary==9){
+        s.project_summary_present=true;
+        if(!integer(o,"project_workers",0,4000,&s.project_workers)||!integer(o,"project_d1",0,4000,&s.project_d1)||
+           !integer(o,"project_r2",0,4000,&s.project_r2)||!integer(o,"project_pages",0,4000,&s.project_pages)||
+           !integer(o,"project_ok",0,4000,&s.project_ok)||!integer(o,"project_attention",0,4000,&s.project_attention)||
+           !integer(o,"project_degraded",0,4000,&s.project_degraded)||!integer(o,"project_unknown",0,4000,&s.project_unknown)||
+           !integer(o,"project_health_age_s",-1,INT_MAX,&s.project_health_age_s))return false;
+    }
     if(s.view==0&&strcmp(s.group,"all"))return false;
+    if(s.project_summary_present){
+        if(s.view!=1||!strcmp(s.group,"all"))return false;
+        if(s.project_workers+s.project_d1+s.project_r2+s.project_pages!=s.total_rows)return false;
+        if(s.project_ok+s.project_attention+s.project_degraded+s.project_unknown>s.project_workers+s.project_d1+s.project_r2)return false;
+    }
     if(s.total_pages!=(s.total_rows+OPSDECK_INVENTORY_ROWS-1)/OPSDECK_INVENTORY_ROWS)return false;
     int expected_page=s.total_pages?(s.requested_page<s.total_pages?s.requested_page:s.total_pages-1):0;
     if(s.page!=expected_page)return false;

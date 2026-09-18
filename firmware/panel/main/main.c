@@ -95,7 +95,7 @@ static void serial_rx(void *unused)
 }
 void app_main(void)
 {
-    ESP_LOGI(TAG,"BOOT version=M5.13-G idf=%s reset_reason=%d",esp_get_idf_version(),(int)esp_reset_reason());
+    ESP_LOGI(TAG,"BOOT version=M5.13-H idf=%s reset_reason=%d",esp_get_idf_version(),(int)esp_reset_reason());
     ESP_LOGI(TAG,"PSRAM_BYTES=%u",(unsigned)esp_psram_get_size());
     if(esp_psram_get_size()<8*1024*1024){ESP_LOGE(TAG,"PSRAM smaller than expected; stopping");return;}
     if(!heap_caps_check_integrity_all(true)){ESP_LOGE(TAG,"Initial heap integrity failed");return;}
