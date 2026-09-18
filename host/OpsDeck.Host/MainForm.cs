@@ -61,7 +61,7 @@ public sealed class MainForm : Form
         var menu=new ContextMenuStrip();menu.Items.Add("ALAZ OPSDECK'i aç",null,(_,_)=>ShowWindow());menu.Items.Add("Durdur ve çık",null,async(_,_)=>await Exit());tray.ContextMenuStrip=menu;tray.DoubleClick+=(_,_)=>ShowWindow();
         configure.Click+=async(_,_)=>{using var dialog=new SettingsForm(settings);if(dialog.ShowDialog(this)==DialogResult.OK){configure.Enabled=false;try{if(engine!=null)await engine.DisposeAsync();engine=new(settings.Load(),settings){Locked=sessionLocked};engine.Start();engine.StartCodexTelemetry();}finally{configure.Enabled=true;}}};
         foreach(var label in new[]{connection,sites}){label.TextChanged+=(_,_)=>FitLabel(label);label.SizeChanged+=(_,_)=>FitLabel(label);}
-        timer.Tick+=(_,_)=>RefreshStatus();Shown+=(_,_)=>{Text="ALAZ OPSDECK — M6.13-A / EdgeNode Read-Only";engine=new(settings.Load(),settings){Locked=sessionLocked};engine.Start();engine.StartCodexTelemetry();timer.Start();if(startInTray)BeginInvoke(new Action(()=>{ShowInTaskbar=false;Hide();}));};
+        timer.Tick+=(_,_)=>RefreshStatus();Shown+=(_,_)=>{Text="ALAZ OPSDECK — M6.13-B / EdgeNode Read-Only";engine=new(settings.Load(),settings){Locked=sessionLocked};engine.Start();engine.StartCodexTelemetry();timer.Start();if(startInTray)BeginInvoke(new Action(()=>{ShowInTaskbar=false;Hide();}));};
         FormClosing+=(_,e)=>{if(!exiting){e.Cancel=true;ShowInTaskbar=false;Hide();}};SystemEvents.SessionSwitch+=SessionChanged;SystemEvents.PowerModeChanged+=PowerChanged;
     }
     private static void FitLabel(Label label)
