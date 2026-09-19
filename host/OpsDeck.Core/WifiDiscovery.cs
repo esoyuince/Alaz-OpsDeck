@@ -31,6 +31,32 @@ public static class WifiNetworkBinding
     }
 }
 
+public static class TailscaleNetworkBinding
+{
+    public static bool IsTailscaleIPv4(IPAddress address)
+    {
+        if(address.AddressFamily!=AddressFamily.InterNetwork)return false;
+        byte[] b=address.GetAddressBytes();
+        return b[0]==100&&b[1]>=64&&b[1]<=127;
+    }
+    public static bool InterfaceLooksLikeTailscale(string? name,string? description)
+        =>(name?.Contains("Tailscale",StringComparison.OrdinalIgnoreCase)??false)||(description?.Contains("Tailscale",StringComparison.OrdinalIgnoreCase)??false);
+    public static IPAddress? ResolveIPv4()
+    {
+        try
+        {
+            foreach(var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if(nic.OperationalStatus!=OperationalStatus.Up||!InterfaceLooksLikeTailscale(nic.Name,nic.Description))continue;
+                foreach(var u in nic.GetIPProperties().UnicastAddresses)
+                    if(IsTailscaleIPv4(u.Address))return u.Address;
+            }
+        }
+        catch(NetworkInformationException){}
+        return null;
+    }
+}
+
 public static class WifiDiscoveryBeacon
 {
     public const int DiscoveryPort=47230;

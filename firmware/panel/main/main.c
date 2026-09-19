@@ -10,6 +10,7 @@
 #include "opsdeck_opsview.h"
 #include "opsdeck_wifi.h"
 #include "opsdeck_link_auth.h"
+#include "opsdeck_tailscale.h"
 #include "opsdeck_sd.h"
 #include <math.h>
 #include <string.h>
@@ -84,6 +85,7 @@ static void serial_rx(void *unused)
                 if(!overflow&&used){
                     line[used]=0;char ack[160];
                     if(opsdeck_link_auth_accept_pairing(line,ack,sizeof(ack))){uart_write_bytes(UART_NUM_0,ack,strlen(ack));uart_write_bytes(UART_NUM_0,"\n",1);last_usb_line_us=esp_timer_get_time();last_accepted=last_usb_line_us;}
+                    else if(opsdeck_tailscale_accept_provision(line,ack,sizeof(ack))){if(ack[0]){uart_write_bytes(UART_NUM_0,ack,strlen(ack));uart_write_bytes(UART_NUM_0,"\n",1);}last_usb_line_us=esp_timer_get_time();last_accepted=last_usb_line_us;}
                     else if(esp_timer_get_time()-last_accepted>100000){last_usb_line_us=esp_timer_get_time();accept_line(line);last_accepted=last_usb_line_us;}
                 }
                 used=0;overflow=false;
@@ -95,7 +97,7 @@ static void serial_rx(void *unused)
 }
 void app_main(void)
 {
-    ESP_LOGI(TAG,"BOOT version=M5.20-A idf=%s reset_reason=%d",esp_get_idf_version(),(int)esp_reset_reason());
+    ESP_LOGI(TAG,"BOOT version=M5.21-A idf=%s reset_reason=%d",esp_get_idf_version(),(int)esp_reset_reason());
     ESP_LOGI(TAG,"PSRAM_BYTES=%u",(unsigned)esp_psram_get_size());
     if(esp_psram_get_size()<8*1024*1024){ESP_LOGE(TAG,"PSRAM smaller than expected; stopping");return;}
     if(!heap_caps_check_integrity_all(true)){ESP_LOGE(TAG,"Initial heap integrity failed");return;}
@@ -118,7 +120,9 @@ void app_main(void)
     if(xTaskCreate(serial_rx,"opsdeck_rx",12288,NULL,2,NULL)!=pdPASS){ESP_LOGE(TAG,"RX task allocation failed");return;}
     opsdeck_wifi_set_frame_handler(accept_wifi_frame);esp_err_t wifi_err=opsdeck_wifi_init();if(wifi_err!=ESP_OK)ESP_LOGW(TAG,"Wi-Fi foundation unavailable: %s",esp_err_to_name(wifi_err));
     esp_err_t auth_err=wifi_err==ESP_OK?opsdeck_link_auth_init():ESP_ERR_INVALID_STATE;if(auth_err!=ESP_OK)ESP_LOGW(TAG,"Wi-Fi link auth unavailable: %s",esp_err_to_name(auth_err));
-    ESP_LOGI(TAG,"READY PC_V1=enabled STATUS_V1=enabled CLOUD_V1=enabled INVENTORY_V1=enabled DETAILS_V1=enabled AGENT_CONTROL_V1=enabled CODEX_SESSION_V1=enabled PROCESSES_V1=enabled WIFI_FOUNDATION=%s WIFI_PAIRING=%s WIFI_TELEMETRY=auth_readonly WIFI_CONTROL=disabled USB_CONTROL=enabled",wifi_err==ESP_OK?"enabled":"error",opsdeck_link_auth_paired()?"paired":"waiting_usb");
+    opsdeck_tailscale_set_frame_handler(accept_wifi_frame);esp_err_t ts_err=wifi_err==ESP_OK?opsdeck_tailscale_init():ESP_ERR_INVALID_STATE;if(ts_err!=ESP_OK)ESP_LOGW(TAG,"Tailscale transport unavailable: %s",esp_err_to_name(ts_err));
+    opsdeck_tailscale_status_t ts_boot;opsdeck_tailscale_copy(&ts_boot);
+    ESP_LOGI(TAG,"READY PC_V1=enabled STATUS_V1=enabled CLOUD_V1=enabled INVENTORY_V1=enabled DETAILS_V1=enabled AGENT_CONTROL_V1=enabled CODEX_SESSION_V1=enabled PROCESSES_V1=enabled WIFI_FOUNDATION=%s WIFI_PAIRING=%s WIFI_TELEMETRY=auth_readonly TAILSCALE=%s WIFI_CONTROL=disabled USB_CONTROL=enabled",wifi_err==ESP_OK?"enabled":"error",opsdeck_link_auth_paired()?"paired":"waiting_usb",ts_boot.compiled?(ts_boot.configured?"configured":"optional"):"build_off");
     unsigned health_ticks=0;
     for(;;){
         vTaskDelay(pdMS_TO_TICKS(5000));
@@ -127,7 +131,7 @@ void app_main(void)
             esp_timer_get_time()/1000000,(unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),(int)sd.state,snapshot.sequence);
-        if(++health_ticks%12==0){opsdeck_wifi_status_t w;opsdeck_wifi_copy(&w);ESP_LOGI(TAG,"READY WIFI_MEM stack_min=%"PRIu32" tcp_auth=%d tcp_active=%d",opsdeck_wifi_stack_min(),w.telemetry_authenticated,w.telemetry_active);}
+        if(++health_ticks%12==0){opsdeck_wifi_status_t w;opsdeck_wifi_copy(&w);opsdeck_tailscale_status_t ts;opsdeck_tailscale_copy(&ts);ESP_LOGI(TAG,"READY WIFI_MEM stack_min=%"PRIu32" tcp_auth=%d tcp_active=%d ts_state=%d ts_connected=%d ts_auth=%d ts_active=%d ts_direct=%d ts_frames=%"PRIu32,opsdeck_wifi_stack_min(),w.telemetry_authenticated,w.telemetry_active,(int)ts.state,ts.connected,ts.telemetry_authenticated,ts.telemetry_active,ts.direct_path,ts.telemetry_frames);}
         opsdeck_details_request_current(); /* Active cached detail view. */
         opsdeck_inventory_request_current(); /* Recover the selected page after host/USB restart. */
     }

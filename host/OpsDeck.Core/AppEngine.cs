@@ -202,7 +202,7 @@ public sealed partial class AppEngine : IAsyncDisposable
         ReloadProjectMappings();
         try{
             var store=new OperationalEventStore(Path.Combine(settings.DirectoryPath,"ops-events.db"));Volatile.Write(ref operationalStore,store);
-            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.20-A / Codex Quota Resilience"));
+            RecordOperational(new(DateTimeOffset.UtcNow,OperationalSeverity.Info,OperationalDomain.Host,"HOST_STARTED","OpsDeck host started: M6.21-A / Direct Tailscale"));
         }catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("ops_timeline_unavailable",new{kind=e.GetType().Name});}
         try{Volatile.Write(ref telemetryHistory,new TelemetryHistoryStore(Path.Combine(settings.DirectoryPath,"telemetry-history.db")));}
         catch(Exception e)when(e is Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException){log.Event("telemetry_history_unavailable",new{kind=e.GetType().Name});}
@@ -230,7 +230,14 @@ public sealed partial class AppEngine : IAsyncDisposable
                 if(bindAddress==null)log.Event("wifi_bind_unavailable",new{network_interface=config.NetworkInterface});
                 else
                 {
-                    tasks.Add(Task.Run(()=>new WifiTelemetryServer(bindAddress,wifiPairingKey,wifiTlsIdentity.Certificate,UsbPrimaryHealthy,BuildWifiTelemetryFrames,log).Run(stop.Token)));
+                    tasks.Add(Task.Run(()=>new WifiTelemetryServer(bindAddress,wifiPairingKey,wifiTlsIdentity.Certificate,UsbPrimaryHealthy,BuildWifiTelemetryFrames,log,"lan").Run(stop.Token)));
+                    var tailscaleAddress=TailscaleNetworkBinding.ResolveIPv4();
+                    if(tailscaleAddress!=null&&!tailscaleAddress.Equals(bindAddress))
+                    {
+                        tasks.Add(Task.Run(()=>new WifiTelemetryServer(tailscaleAddress,wifiPairingKey,wifiTlsIdentity.Certificate,UsbPrimaryHealthy,BuildWifiTelemetryFrames,log,"tailscale").Run(stop.Token)));
+                        log.Event("tailscale_telemetry_listen_ready",new{bind_address=tailscaleAddress.ToString(),port=WifiPairing.Port,mode="read_only"});
+                    }
+                    else log.Event("tailscale_telemetry_bind_unavailable",new{reason=tailscaleAddress==null?"interface_not_found":"same_as_lan"});
                     tasks.Add(Task.Run(()=>WifiDiscoveryBeacon.Run(stop.Token)));
                 }
             }
@@ -261,7 +268,7 @@ public sealed partial class AppEngine : IAsyncDisposable
                 finally{cf.Dispose();billingCf?.Dispose();}
             }));
         }
-        log.Event("host_started",new{version="M6.20-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
+        log.Event("host_started",new{version="M6.21-A",serial,accounts=Accounts.Count(a=>a.Profile.Enabled)});
     }
     private bool UsbPrimaryHealthy()
     {

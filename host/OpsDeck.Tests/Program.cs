@@ -74,6 +74,12 @@ foreach(string url in new[]{"http://example.com/","https://example.com/?token=x"
 Check("valid-site",HostConfig.ValidateSite("https://example.com/health").Scheme=="https");
 foreach(string ip in new[]{"127.0.0.1","10.1.1.1","172.16.0.1","192.168.1.2","169.254.169.254","100.64.0.1","0.0.0.0","224.0.0.1","::1","fe80::1","fc00::1","::ffff:127.0.0.1","2001:db8::1"})Check("private-address-"+ip,!HealthChecks.IsPublicAddress(IPAddress.Parse(ip)));
 Check("public-ipv4",HealthChecks.IsPublicAddress(IPAddress.Parse("1.1.1.1")));Check("public-ipv6",HealthChecks.IsPublicAddress(IPAddress.Parse("2606:4700:4700::1111")));
+Check("tailscale-range-start",TailscaleNetworkBinding.IsTailscaleIPv4(IPAddress.Parse("100.64.0.1")));
+Check("tailscale-range-end",TailscaleNetworkBinding.IsTailscaleIPv4(IPAddress.Parse("100.127.255.254")));
+Check("tailscale-range-reject-cgnat-outside",!TailscaleNetworkBinding.IsTailscaleIPv4(IPAddress.Parse("100.128.0.1")));
+Check("tailscale-range-reject-lan",!TailscaleNetworkBinding.IsTailscaleIPv4(IPAddress.Parse("192.168.68.77")));
+Check("tailscale-interface-name",TailscaleNetworkBinding.InterfaceLooksLikeTailscale("Tailscale","Tailscale Tunnel"));
+Check("tailscale-interface-reject-wifi",!TailscaleNetworkBinding.InterfaceLooksLikeTailscale("Wi-Fi","Intel Wireless"));
 Check("bridge-health-identity",AgentSampler.IsBridgeHealth(Parse("{\"ok\":true,\"name\":\"chatgpt-codex-mcp-bridge\"}")));
 Check("foreign-health-not-bridge",!AgentSampler.IsBridgeHealth(Parse("{\"ok\":true,\"name\":\"other\"}")));
 Check("health-false",!AgentSampler.IsBridgeHealth(Parse("{\"ok\":false,\"name\":\"chatgpt-codex-mcp-bridge\"}")));

@@ -56,7 +56,7 @@ public static class WifiPairing
     }
 }
 
-public sealed class WifiTelemetryServer(IPAddress bindAddress,string keyHex,X509Certificate2 certificate,Func<bool> usbPrimary,Func<string[]> frames,SafeLog log)
+public sealed class WifiTelemetryServer(IPAddress bindAddress,string keyHex,X509Certificate2 certificate,Func<bool> usbPrimary,Func<string[]> frames,SafeLog log,string transport="lan")
 {
     private const int MaxConcurrentSessions=8;
     private static readonly TimeSpan AuthTimeout=TimeSpan.FromSeconds(2);
@@ -64,7 +64,7 @@ public sealed class WifiTelemetryServer(IPAddress bindAddress,string keyHex,X509
     public async Task Run(CancellationToken ct)
     {
         if(!WifiNetworkBinding.IsBindableIPv4(bindAddress))throw new ArgumentException("Telemetry bind address must be a usable IPv4 address.",nameof(bindAddress));
-        var listener=new TcpListener(bindAddress,WifiPairing.Port);listener.Start(MaxConcurrentSessions);log.Event("wifi_telemetry_listen",new{bind_address=bindAddress.ToString(),port=WifiPairing.Port,mode="read_only",max_sessions=MaxConcurrentSessions,chat_over_wifi=false});
+        var listener=new TcpListener(bindAddress,WifiPairing.Port);listener.Start(MaxConcurrentSessions);log.Event("wifi_telemetry_listen",new{bind_address=bindAddress.ToString(),port=WifiPairing.Port,transport,mode="read_only",max_sessions=MaxConcurrentSessions,chat_over_wifi=false});
         var sessions=new List<Task>();
         try
         {
@@ -115,7 +115,7 @@ public sealed class WifiTelemetryServer(IPAddress bindAddress,string keyHex,X509
             await stream.AuthenticateAsServerAsync(tlsOptions,tlsCts.Token);
         }
         long tlsElapsedMs=(long)System.Diagnostics.Stopwatch.GetElapsedTime(tlsStarted).TotalMilliseconds;
-        log.Event("wifi_tls_established",new{remote,protocol=stream.SslProtocol.ToString(),cipher=stream.NegotiatedCipherSuite.ToString(),elapsed_ms=tlsElapsedMs});
+        log.Event("wifi_tls_established",new{remote,transport,protocol=stream.SslProtocol.ToString(),cipher=stream.NegotiatedCipherSuite.ToString(),elapsed_ms=tlsElapsedMs});
         long authStarted=System.Diagnostics.Stopwatch.GetTimestamp();
         var utf8=new UTF8Encoding(false);using var reader=new StreamReader(stream,utf8,false,512,true);using var writer=new StreamWriter(stream,utf8,512,true){AutoFlush=true,NewLine="\n"};
         string nonce=Convert.ToHexString(RandomNumberGenerator.GetBytes(16));await WriteLineBounded(writer,$"OPSDECK_CHALLENGE_V1|{nonce}",ct);
@@ -126,7 +126,7 @@ public sealed class WifiTelemetryServer(IPAddress bindAddress,string keyHex,X509
         string serverProof=WifiPairing.ServerMac(keyHex,nonce,device);
         await WriteLineBounded(writer,$"OPSDECK_AUTH_OK_V1|{serverProof}",ct);
         long authElapsedMs=(long)System.Diagnostics.Stopwatch.GetElapsedTime(authStarted).TotalMilliseconds;
-        log.Event("wifi_telemetry_auth_ok",new{remote,device,auth_elapsed_ms=authElapsedMs});bool? lastStandby=null;long frameSequence=0;
+        log.Event("wifi_telemetry_auth_ok",new{remote,transport,device,auth_elapsed_ms=authElapsedMs});bool? lastStandby=null;long frameSequence=0;
         while(!ct.IsCancellationRequested&&client.Connected)
         {
             bool standby=usbPrimary();

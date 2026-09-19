@@ -82,10 +82,13 @@ tools/*
 !tools/check_m611b_tls_perf.py
 !tools/check_m612_tls.py
 !tools/check_winui_modern.py
+!tools/check_tailscale_transport_m521a.py
+!tools/provision_tailscale.py
 
 # Generated firmware configuration / local source assets
 firmware/panel/sdkconfig
 firmware/panel/sdkconfig.*
 !firmware/panel/sdkconfig.defaults
+!firmware/panel/sdkconfig.tailscale.defaults
 *.pending
 *.ttf

@@ -5,6 +5,7 @@
 #include "opsdeck_status.h"
 #include "opsdeck_sd.h"
 #include "opsdeck_wifi.h"
+#include "opsdeck_tailscale.h"
 #include "opsdeck_link_auth.h"
 #include "opsdeck_keyboard.h"
 #include "esp_timer.h"
@@ -146,12 +147,12 @@ void opsdeck_screen_ui_open(opsdeck_screen_mode_t next)
         for(int i=0;i<7;i++){row[i]=lv_obj_create(root);lv_obj_set_pos(row[i],12,91+i*48);lv_obj_set_size(row[i],776,43);lv_obj_set_style_bg_color(row[i],color(CARD),0);lv_obj_set_style_border_color(row[i],color(EDGE),0);lv_obj_set_style_border_width(row[i],1,0);lv_obj_set_style_radius(row[i],9,0);lv_obj_set_style_pad_all(row[i],0,0);lv_obj_remove_flag(row[i],LV_OBJ_FLAG_SCROLLABLE);row_title[i]=label(row[i],10,5,210,"--",&lv_font_montserrat_12,MUTED);row_text[i]=label(row[i],224,5,540,"--",&lv_font_montserrat_12,INK);}
         history_note=label(root,16,437,760,mode==OPS_SCREEN_ALERTS?"No invented temperature limits; warning policy remains host-authoritative.":"Time-related, not causal.",&lv_font_montserrat_12,MUTED);
     }else if(mode==OPS_SCREEN_WIFI){
-        live_note=label(root,16,58,760,"Wi-Fi STA | authenticated LAN telemetry | USB control primary",&lv_font_montserrat_14,MUTED);
+        live_note=label(root,16,58,760,"Wi-Fi STA | LAN + optional Tailscale telemetry | USB control primary",&lv_font_montserrat_14,MUTED);
         wifi_state_label=label(root,16,83,760,"STATE --",&lv_font_montserrat_14,INK);wifi_ssid_label=label(root,16,106,760,"SSID --",&lv_font_montserrat_12,MUTED);wifi_ip_label=label(root,16,127,760,"IP -- | RSSI --",&lv_font_montserrat_12,MUTED);wifi_host_label=label(root,16,148,760,"HOST discovery --",&lv_font_montserrat_12,MUTED);
         wifi_scan_btn=button(root,16,173,120,34,"SCAN",wifi_scan_event,NULL,NULL);wifi_config_btn=button(root,146,173,144,34,"CONFIGURE",wifi_config_event,NULL,NULL);wifi_connect_btn=button(root,300,173,120,34,"CONNECT",wifi_connect_event,NULL,NULL);wifi_forget_btn=button(root,430,173,120,34,"FORGET",wifi_forget_event,NULL,NULL);
         label(root,16,216,760,"NEARBY NETWORKS",&lv_font_montserrat_12,MUTED);
         for(int i=0;i<OPSDECK_WIFI_SCAN_MAX;i++){wifi_ap_btn[i]=button(root,16,238+i*39,768,34,"--",wifi_ap_event,(void*)(intptr_t)i,&wifi_ap_label[i]);lv_obj_add_flag(wifi_ap_btn[i],LV_OBJ_FLAG_HIDDEN);}
-        history_note=label(root,16,440,760,"LAN telemetry: HMAC auth + integrity, read-only, not TLS. Remote TLS/Tunnel planned.",&lv_font_montserrat_12,MUTED);
+        history_note=label(root,16,440,760,"LAN/Tailscale telemetry: TLS 1.2 + HMAC | read-only | USB control primary",&lv_font_montserrat_12,MUTED);
     }else if(local_mode()){
         live_note=label(root,16,62,760,"Live Deck status",&lv_font_montserrat_14,MUTED);
         for(int i=0;i<6;i++){row[i]=lv_obj_create(root);lv_obj_set_pos(row[i],12,96+i*54);lv_obj_set_size(row[i],776,48);lv_obj_set_style_bg_color(row[i],color(CARD),0);lv_obj_set_style_border_color(row[i],color(EDGE),0);lv_obj_set_style_border_width(row[i],1,0);lv_obj_set_style_radius(row[i],10,0);lv_obj_set_style_pad_all(row[i],0,0);lv_obj_remove_flag(row[i],LV_OBJ_FLAG_SCROLLABLE);row_title[i]=label(row[i],12,7,210,"--",&lv_font_montserrat_12,MUTED);row_text[i]=label(row[i],230,7,532,"--",&lv_font_montserrat_14,INK);}
@@ -268,13 +269,15 @@ static const char *wifi_state_name(opsdeck_wifi_state_t s)
 }
 static void render_wifi(int64_t now)
 {
-    opsdeck_wifi_status_t s;opsdeck_wifi_copy(&s);char b[192];uint32_t c=s.connected?GREEN:(s.state==OPSDECK_WIFI_ERROR?RED:(s.state==OPSDECK_WIFI_CONNECTING?AMBER:MUTED));
+    opsdeck_wifi_status_t s;opsdeck_wifi_copy(&s);opsdeck_tailscale_status_t ts;opsdeck_tailscale_copy(&ts);char b[192];uint32_t c=s.connected?GREEN:(s.state==OPSDECK_WIFI_ERROR?RED:(s.state==OPSDECK_WIFI_CONNECTING?AMBER:MUTED));
     snprintf(b,sizeof(b),"%s%s%s%s%s",wifi_state_name(s.state),s.radio_active?" | RADIO ON":" | RADIO IDLE",opsdeck_link_auth_paired()?" | PAIRED":" | USB PAIR WAIT",s.scanning?" | SCANNING":"",s.retry_count>0?" | RETRY":"");lv_label_set_text(wifi_state_label,b);lv_obj_set_style_text_color(wifi_state_label,color(c),0);
     snprintf(b,sizeof(b),"SSID %s%s",s.configured?s.ssid:"NOT CONFIGURED",s.configured?" | saved":"");lv_label_set_text(wifi_ssid_label,b);
     if(s.connected)snprintf(b,sizeof(b),"IP %s | RSSI %d dBm | retries %d",s.ip[0]?s.ip:"--",s.rssi,s.retry_count);else snprintf(b,sizeof(b),"IP -- | disconnect reason %d | retries %d",s.last_disconnect_reason,s.retry_count);lv_label_set_text(wifi_ip_label,b);
     if(s.host_seen_us>0){int age=(int)((now-s.host_seen_us)/1000000);const char *tcp=s.telemetry_active?"LAN TELEMETRY ACTIVE":s.telemetry_authenticated?"LAN AUTH / USB PRIMARY":opsdeck_link_auth_paired()?"LAN AUTH WAIT":"USB PAIR WAIT";snprintf(b,sizeof(b),"HOST %s | %s:%u | %s | %ds",s.host_name,s.host_ip,(unsigned)s.host_port,tcp,age);lv_label_set_text(wifi_host_label,b);lv_obj_set_style_text_color(wifi_host_label,color(s.telemetry_authenticated?GREEN:CYAN),0);}
+    else if(ts.configured){const char *remote=ts.telemetry_active?"REMOTE ACTIVE":ts.telemetry_authenticated?"REMOTE AUTH / USB PRIMARY":ts.connected?"TAILSCALE READY":"TAILSCALE CONNECTING";snprintf(b,sizeof(b),"TAILSCALE %s:%u | %s | %s",ts.host_ip,(unsigned)ts.host_port,remote,ts.direct_path?"DIRECT":"DERP/WAIT");lv_label_set_text(wifi_host_label,b);lv_obj_set_style_text_color(wifi_host_label,color(ts.telemetry_authenticated?GREEN:(ts.connected?CYAN:AMBER)),0);}
     else{lv_label_set_text(wifi_host_label,"HOST discovery -- | waiting for OpsDeck host beacon");lv_obj_set_style_text_color(wifi_host_label,color(MUTED),0);}
-    if(age_label){lv_label_set_text(age_label,s.connected?"WIFI LIVE":(s.configured?"WIFI WAIT":"WIFI SETUP"));lv_obj_set_style_text_color(age_label,color(c),0);}
+    if(history_note){if(ts.compiled&&ts.configured){snprintf(b,sizeof(b),"TLS 1.2 + HMAC | Tailscale %s %s | VPN %s",ts.connected?"CONNECTED":"WAIT",ts.direct_path?"DIRECT":"DERP/WAIT",ts.vpn_ip[0]?ts.vpn_ip:"--");lv_label_set_text(history_note,b);}else if(ts.compiled)lv_label_set_text(history_note,"LAN TLS 1.2 + HMAC | Tailscale optional / not enrolled");else lv_label_set_text(history_note,"LAN TLS 1.2 + HMAC | Tailscale build disabled");}
+    if(age_label){lv_label_set_text(age_label,ts.telemetry_active?"TAILSCALE LIVE":(s.connected?"WIFI LIVE":(s.configured?"WIFI WAIT":"WIFI SETUP")));lv_obj_set_style_text_color(age_label,color(ts.telemetry_active?GREEN:c),0);}
     if(wifi_connect_btn){if(s.configured)lv_obj_remove_state(wifi_connect_btn,LV_STATE_DISABLED);else lv_obj_add_state(wifi_connect_btn,LV_STATE_DISABLED);}
     if(wifi_forget_btn){if(s.configured)lv_obj_remove_state(wifi_forget_btn,LV_STATE_DISABLED);else lv_obj_add_state(wifi_forget_btn,LV_STATE_DISABLED);}
     if(wifi_scan_btn){if(s.scanning)lv_obj_add_state(wifi_scan_btn,LV_STATE_DISABLED);else lv_obj_remove_state(wifi_scan_btn,LV_STATE_DISABLED);}
